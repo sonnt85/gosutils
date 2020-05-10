@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
-	"log"
+	//	"log"
 	"net"
 	"net/http"
 	"net/smtp"
