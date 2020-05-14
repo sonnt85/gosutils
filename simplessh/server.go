@@ -24,7 +24,7 @@ func (s *Server) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
-	
+
 	return s.Serve(ln.(*net.TCPListener))
 }
 
@@ -122,8 +122,8 @@ func NewStandardSSHServerHandler() *SSHConnHandler {
 
 	globalHandler := NewGlobalMultipleRequestsMux()
 	globalHandler.HandleRequest(RemoteForwardRequest, TCPIPForwardRequestHandler())
-	
-//	globalHandler.HandleRequest(CancelRemoteForwardRequest, TCPIPForwardCancelRequestHandler())
+
+	//	globalHandler.HandleRequest(CancelRemoteForwardRequest, TCPIPForwardCancelRequestHandler())
 
 	s.GlobalMultipleRequestsHandler = globalHandler
 	return s

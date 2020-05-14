@@ -9,7 +9,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-
 func main() {
 
 	privateBytes, err := ioutil.ReadFile("id_rsa")
@@ -33,11 +32,9 @@ func main() {
 	}
 	config.AddHostKey(private)
 
-
 	simplessh.HandleChannel(simplessh.SessionRequest, simplessh.SessionHandler())
 	simplessh.HandleChannel(simplessh.DirectForwardRequest, simplessh.DirectPortForwardHandler())
 	simplessh.HandleRequestFunc(simplessh.RemoteForwardRequest, simplessh.TCPIPForwardRequest)
 
 	simplessh.ListenAndServe(":2022", config, nil)
 }
-

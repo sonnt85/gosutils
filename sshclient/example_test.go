@@ -54,7 +54,7 @@ func TestClientConfig() {
 
 	laddr, _ := net.ResolveTCPAddr("tcp", "localhost:65534")
 	raddr, _ := net.ResolveTCPAddr("tcp", "localhost:2222")
-	err = conn.LocalForward(laddr, raddr)
+	err = conn.LocalForward(nil, laddr, raddr)
 	if err != nil {
 		log.Fatalf("unable to forward local port: %s", err)
 	}

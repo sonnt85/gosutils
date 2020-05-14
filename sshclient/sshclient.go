@@ -3,7 +3,7 @@ package sshclient
 import (
 	"bufio"
 	"bytes"
-	"fmt"
+	//	"fmt"
 	//	terminaldimensions "github.com/sonnt85/gosutils/terminaldimensions"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
@@ -17,6 +17,7 @@ import (
 	//	"regexp"
 	//	"strconv"
 
+	//	"context"
 	"strings"
 	"sync"
 	//	"time"
@@ -207,7 +208,7 @@ func (c *Client) RunCommand(cmd string) (err error) {
 		}
 
 		err = session.RequestPty(tertype, termHeight, termWidth, modes)
-		fmt.Printf("%dx%d\n", termWidth, termHeight)
+		//		fmt.Printf("%dx%d\n", termWidth, termHeight)
 		if err != nil {
 			return err
 		}
@@ -228,7 +229,7 @@ func (c *Client) RunCommand(cmd string) (err error) {
 }
 
 // LocalForward performs a port forwarding over the ssh connection - ssh -L. Client will bind to the local address, and will tunnel those requests to host addr
-func (c *Client) LocalForward(laddrstr, raddrstr string) error {
+func (c *Client) LocalForward(retport chan int, laddrstr, raddrstr string) error {
 	if laddrstr == "0" {
 		laddrstr = "localhost:0"
 	}
@@ -249,7 +250,16 @@ func (c *Client) LocalForward(laddrstr, raddrstr string) error {
 		println(err.Error())
 		return err
 	}
-	fmt.Println("[LocalForward] Listening on address: ", ln.Addr().String())
+	doneRetPort := false
+
+	go func() {
+		select {
+		case retport <- ln.Addr().(*net.TCPAddr).Port:
+			doneRetPort = true
+			return
+		}
+	}()
+	//	fmt.Println("[LocalForward] Listening on address: ", ln.Addr().String())
 
 	quit := make(chan bool)
 
@@ -292,12 +302,14 @@ func (c *Client) LocalForward(laddrstr, raddrstr string) error {
 
 	ln.Close()
 	quit <- true
-
+	if !doneRetPort {
+		<-retport
+	}
 	return nil
 }
 
 // RemoteForward forwards a remote port - ssh -R
-func (c *Client) RemoteForward(remote, local string) error {
+func (c *Client) RemoteForward(retport chan int, remote, local string) error {
 	if remote == "0" {
 		remote = "localhost:0"
 	}
@@ -306,7 +318,17 @@ func (c *Client) RemoteForward(remote, local string) error {
 		println(err.Error())
 		return err
 	}
-	fmt.Println("[Remote forward] Listening on address: ", ln.Addr().String())
+	doneRetPort := false
+
+	go func() {
+		select {
+		case retport <- ln.Addr().(*net.TCPAddr).Port:
+			// strings.Split(ln.Addr().String(), ":")[1]:
+			doneRetPort = true
+			return
+		}
+	}()
+	//	fmt.Println("[Remote forward] Listening on address: ", ln.Addr().String())
 
 	quit := make(chan bool)
 
@@ -343,6 +365,9 @@ func (c *Client) RemoteForward(remote, local string) error {
 	c.Wait()
 	ln.Close()
 	quit <- true
+	if !doneRetPort {
+		<-retport
+	}
 
 	return nil
 }
