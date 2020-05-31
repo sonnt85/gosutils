@@ -14,13 +14,21 @@ package runonce
 import (
 	"encoding/json"
 	//	"flag"
+	"errors"
 	"fmt"
+	"github.com/getlantern/byteexec"
+	//	"github.com/getlantern/daemon"
+
+	"github.com/sonnt85/gosutils/daemon"
 	"github.com/sonnt85/gosutils/sutils"
+
+	"context"
 	"io"
 	"log"
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,25 +36,57 @@ import (
 	"time"
 )
 
-type RunOnceConf struct {
-	IpAddress string
-	WorkDir   string
-	port      int
-	timeout   int
-	noBind    bool
-	noLog     bool
-	loopCall  bool
-	cmd       *exec.Cmd
-	args      []string
-	doneExec  chan struct{}
-	finished  chan struct{}
-	isFunc    bool
+type Runtype int
+
+const (
+	RUNFUNC Runtype = iota
+	RUNBYTES
+	RUNFILE
+)
+
+func (rt Runtype) String() string {
+	return [...]string{"RUNFUNC", "RUNBYTES", "RUNFILE"}[rt]
 }
 
-func warnf(format string, a ...interface{}) {
-	//if nolog != true {
-	fmt.Fprintln(os.Stderr, "[", time.Now().Format(time.StampMilli), "]", fmt.Sprintf(format, a...))
-	//}
+type RunOnceConf struct {
+	IpAddress                                       string
+	WorkDir                                         string
+	runtype                                         Runtype
+	Port                                            int
+	PortRuntime                                     int
+	timeout                                         int
+	noBind                                          bool
+	NoLog                                           bool
+	LoopCall                                        bool
+	cmd                                             *exec.Cmd
+	Args                                            []string
+	exebytes                                        []byte
+	Exename, ExeFullPathRuntime, ExeRealNameRuntime string
+
+	doneExec chan struct{}
+	ctx      context.Context
+	PATH     string
+	cancel   context.CancelFunc
+}
+
+func (gVar *RunOnceConf) Reset() {
+	gVar.IpAddress = ""
+	gVar.WorkDir = ""
+	gVar.runtype = RUNFUNC
+	gVar.Port = 0
+	gVar.PortRuntime = 0
+	gVar.timeout = 0
+	gVar.noBind = false
+	gVar.NoLog = false
+	gVar.LoopCall = false
+	gVar.cmd = nil
+	gVar.Args = []string{}
+	gVar.exebytes = []byte{}
+	gVar.Exename = ""
+	gVar.ExeRealNameRuntime = ""
+
+	//	gVar.doneExec chan struct{}
+	//	gVar.ctx      context.Context
 }
 
 /*
@@ -83,36 +123,50 @@ func closeOnExec(state bool) {
 	}
 }
 
-func cmdtable(buf []byte, gVar *RunOnceConf) {
-	var dat map[string]interface{}
+func (gVar *RunOnceConf) cmdtable(buf []byte, conn net.Conn) {
+	//	var dat map[string]interface{}
+	var dat map[string]string
+
 	//	fmt.Println(len(buf))
 	if err := json.Unmarshal(buf[:len(buf)], &dat); err != nil {
-		warnf("Not is json: ", err.Error())
+		cmd := strings.TrimRight(string(buf), "\r\n")
+		gVar.Log("cmd: '%s'", cmd)
+
+		switch cmd {
+		case "getpid":
+			conn.Write([]byte(strconv.Itoa(syscall.Getpid())))
+		case "ping":
+			conn.Write([]byte("pong"))
+
+		default:
+		}
 		return
 	}
-
+	//json parser pass with private command
 	var cmd = dat["cmd"]
 	var token = dat["token"]
 	if token != strconv.Itoa(syscall.Getpid()) {
-		warnf("Missing token!")
+		gVar.Log("Missing token!")
 		return
 	}
+
 	switch cmd {
 	case "quit":
-		if gVar.isFunc == false {
-			syscall.Kill(syscall.Getpid(), syscall.SIGKILL)
+		if gVar.runtype != RUNFUNC {
+			gVar.cancel()
+			//syscall.Kill(syscall.Getpid(), syscall.SIGKILL)
 		}
-		gVar.finished <- struct{}{}
+		gVar.cancel()
 
 	case "restart":
-		//	warnf("%d/%d", gVar.cmd.Process.Pid, syscall.Getpid())
+		//gVar.Log("%d/%d", gVar.cmd.Process.Pid, syscall.Getpid())
 		//syscall.Kill(gVar.cmd.Process.Pid, syscall.SIGKILL)
-		if gVar.isFunc == false {
+		if gVar.runtype != RUNFUNC {
+			gVar.cmd.Process.Signal(syscall.SIGTERM)
+			time.Sleep(time.Microsecond * 100)
 			gVar.cmd.Process.Kill()
 			gVar.cmd.Process.Release()
 		}
-	case "getpid":
-
 	case "eval":
 
 	case "debug":
@@ -120,60 +174,52 @@ func cmdtable(buf []byte, gVar *RunOnceConf) {
 	case "delayget":
 
 	case "echo":
-		fmt.Print(dat["data"])
+		data := dat["data"]
+		conn.Write([]byte(data))
+		return
 	default:
 	}
+	//	conn.Write([]byte(data))
 }
 
-func handleRequest(conn net.Conn, gVar *RunOnceConf) {
+func (gVar *RunOnceConf) handleRequest(conn net.Conn) {
 	// Make a buffer to hold incoming data.
 	defer conn.Close()
-	tmp := make([]byte, 1024)
-	data := make([]byte, 0)
+	var isClosed = false
+	data := make([]byte, 1024)
 	// Read the incoming connection into the buffer.
-	length := 0
-
 	// loop through the connection stream, appending tmp to data
 	for {
-		// read to the tmp var
-		n, err := conn.Read(tmp)
-		if err != nil {
-			// log if not normal error
-			if err != io.EOF {
-				warnf("Read error - %s\n", err)
-			}
-			break
-		} else {
-			// append read data to full data
-			data = append(data, tmp[:n]...)
-			length += n
-			break
+
+		n, err := conn.Read(data)
+		//		gVar.Log("New data from client")
+		if err == io.EOF {
+			isClosed = true
 		}
 
-	}
+		gVar.cmdtable(data[:n], conn)
 
-	//	fmt.Println(length)
-	//	cmdtable(data[:length])
-	cmdtable(data, gVar)
-	// Send a response back to person contacting us.
-	conn.Write([]byte(data))
-	// Close the connection when you're done with it.
+		if isClosed {
+			return
+		}
+	}
 }
 
-func NewRunOnce(IpAddress, WorkDir string, port, timeout int, noBind, noLog, isFunc, loopCall bool, args []string) *RunOnceConf {
+func NewRunOnce(IpAddress, WorkDir string, port, timeout int, noBind, NoLog, LoopCall bool, runtype Runtype, args []string, exebytes []byte) *RunOnceConf {
 	return &RunOnceConf{
 		cmd:       nil,
 		IpAddress: IpAddress,
 		WorkDir:   WorkDir,
-		port:      port,
+		Port:      port,
 		timeout:   timeout,
 		noBind:    noBind,
-		noLog:     noLog,
-		isFunc:    isFunc,
-		loopCall:  loopCall,
+		NoLog:     NoLog,
+		LoopCall:  LoopCall,
 		doneExec:  make(chan struct{}, 1),
-		finished:  make(chan struct{}, 1),
-		args:      args,
+		Args:      args,
+		runtype:   runtype,
+		exebytes:  exebytes,
+		//		ctx:       context.WithCancel(context.Background()),
 	}
 }
 
@@ -182,51 +228,134 @@ func NewRunOnceFuncPort(port int) *RunOnceConf {
 		cmd:       nil,
 		IpAddress: "localhost",
 		WorkDir:   "",
-		port:      port,
+		Port:      port,
 		timeout:   1,
 		noBind:    false,
-		noLog:     true,
-		isFunc:    true,
-		loopCall:  false,
+		NoLog:     true,
+		LoopCall:  false,
+		runtype:   RUNFUNC,
 		doneExec:  make(chan struct{}, 1),
-		finished:  make(chan struct{}, 1),
-		args:      []string{},
+		Args:      []string{},
+		//		ctx:       context.WithCancel(context.Background()),
 	}
 }
 
-func NewRunOnceExecPort(port int, loopCall bool, args []string) *RunOnceConf {
+func NewRunOnceExecPort(port int, LoopCall bool, args []string) *RunOnceConf {
 	return &RunOnceConf{
 		cmd:       nil,
 		IpAddress: "localhost",
 		WorkDir:   "",
-		port:      port,
+		Port:      port,
 		timeout:   1,
 		noBind:    false,
-		noLog:     true,
-		isFunc:    false,
-		loopCall:  loopCall,
+		NoLog:     true,
+		runtype:   RUNFILE,
+		LoopCall:  LoopCall,
 		doneExec:  make(chan struct{}, 1),
-		finished:  make(chan struct{}, 1),
-		args:      args,
+		Args:      args,
+		//		ctx:       context.WithCancel(context.Background()),
 	}
 }
 
-func Run(gVar *RunOnceConf) {
+func NewRunOnceBytesPort(port int, LoopCall bool, exebytes []byte) *RunOnceConf {
+	return &RunOnceConf{
+		cmd:       nil,
+		IpAddress: "localhost",
+		WorkDir:   "",
+		Port:      port,
+		timeout:   1,
+		noBind:    false,
+		NoLog:     true,
+		runtype:   RUNBYTES,
+		LoopCall:  LoopCall,
+		doneExec:  make(chan struct{}, 1),
+		exebytes:  exebytes,
+		//		ctx:       context.WithCancel(context.Background()),
+	}
+}
+
+func (gVar *RunOnceConf) Log(format string, a ...interface{}) {
+	if !gVar.NoLog {
+		fmt.Fprintln(os.Stderr, "[", time.Now().Format(time.StampMilli), "]", fmt.Sprintf(format, a...))
+	}
+}
+
+func (gVar *RunOnceConf) GenerateCmd() (err error) {
+	if gVar.runtype == RUNBYTES {
+		be, err := byteexec.New(gVar.exebytes, gVar.Exename)
+		if err != nil {
+			return err
+		}
+		gVar.ExeRealNameRuntime = be.Filename
+		gVar.cmd = be.Command(gVar.Args...)
+
+	} else {
+		if len(gVar.Args) < 1 {
+			gVar.Log("You must specify a command\n")
+			return errors.New("Need has command arguments")
+		}
+
+		execPathOrg := gVar.Args[0]
+		cmdArgs := gVar.Args[1:]
+
+		gVar.ExeFullPathRuntime, err = exec.LookPath(execPathOrg)
+
+		if err != nil {
+			gVar.Log("Program is not exits: %s", execPathOrg)
+			return err
+		}
+		gVar.ExeRealNameRuntime = execPathOrg
+		os.Setenv(sutils.PathGetEnvPathKey(), gVar.PATH)
+		if len(gVar.Exename) > 0 {
+			tmppath := sutils.TempFileCreateInNewTemDir(gVar.Exename)
+			if len(tmppath) != 0 {
+				if os.Symlink(gVar.ExeFullPathRuntime, tmppath) == nil {
+					//					gVar.Log("Use fake name")
+					os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(gVar.PATH, path.Dir(tmppath)))
+					//					os.Setenv("PATH", gVar.PATH+":"+path.Dir(tmppath))
+					gVar.ExeFullPathRuntime = tmppath
+					gVar.ExeRealNameRuntime = gVar.Exename
+					//					execPathOrg = gVar.Exename
+				}
+			}
+		}
+
+		gVar.cmd = exec.Command(gVar.ExeRealNameRuntime, cmdArgs...)
+	}
+	return nil
+}
+
+func (gVar *RunOnceConf) Poll() bool {
+
+	if retbytes, err := sutils.NetTCPClientSend(fmt.Sprintf("localhost:%d", gVar.Port), []byte("ping")); err == nil {
+		//		gVar.Log("retbytes: %s", retbytes)
+		if string(retbytes) == "pong" {
+			gVar.Log("App is running....")
+			return true
+		} else {
+			gVar.Log("Port is using but not for app")
+		}
+	}
+
+	return false
+}
+
+func (gVar *RunOnceConf) Run() (err error) {
 	//
 	//	flag.StringVar(&gVar.IpAddress, "address", "127.0.0.1", "Address to listen on or to check")
 	//	flag.StringVar(&gVar.WorkDir, "dir", "", "Working diretory")
-	//	flag.IntVar(&gVar.port, "port", 0, "Port to listen on or to check")
+	//	flag.IntVar(&gVar.Port, "port", 0, "Port to listen on or to check")
 	//	flag.IntVar(&gVar.timeout, "timeout", 1, "Timeout when checking. Default: 1 second.")
 	//	flag.BoolVar(&gVar.noBind, "no-bind", false, "Do not bind on address:port specified")
-	//	flag.BoolVar(&gVar.noLog, "no-log", false, "Do not print logs")
-	//	flag.BoolVar(&gVar.loopCall, "loop", false, "Loop call command flag")
+	//	flag.BoolVar(&gVar.NoLog, "no-log", false, "Do not print logs")
+	//	flag.BoolVar(&gVar.LoopCall, "loop", false, "Loop call command flag")
 	//
 	//	gVar.doneExec = make(chan struct{}, 1)
 	//	flag.Parse()
 	//	envtmp := os.Getenv("MP_PORT")
 	//	os.Unsetenv("MP_PORT")
-	//	if envtmp != "" && gVar.port == 0 {
-	//		gVar.port, _ = strconv.Atoi(envtmp)
+	//	if envtmp != "" && gVar.Port == 0 {
+	//		gVar.Port, _ = strconv.Atoi(envtmp)
 	//	}
 	//
 	//	envtmp = os.Getenv("MP_DIR")
@@ -237,125 +366,208 @@ func Run(gVar *RunOnceConf) {
 	//
 	//	envtmp = os.Getenv("MP_ENLOG")
 	//	os.Unsetenv("MP_ENLOG")
-	//	if envtmp != "" && gVar.noLog == true {
-	//		gVar.noLog = false
+	//	if envtmp != "" && gVar.NoLog == true {
+	//		gVar.NoLog = false
 	//	}
 	//
+	gVar.PATH = sutils.PathGetEnvPathValue()
+	gVar.ctx, gVar.cancel = context.WithCancel(context.Background())
+	defer func() {
+		if gVar.ctx.Err() == nil {
+			gVar.cancel()
+		}
+	}()
 
 	if gVar.noBind {
-		if sutils.IsPortAvailable(gVar.IpAddress, gVar.port, gVar.timeout) {
-			warnf("Port is available. App is not running")
+		if sutils.IsPortAvailable(gVar.IpAddress, gVar.Port, gVar.timeout) {
+			gVar.Log("Port is available. App is not running")
 		} else {
-			warnf("Port is not available. App is running?")
-			os.Exit(1)
+			if gVar.Poll() {
+				os.Exit(1)
+				return errors.New("App is running....")
+			} else {
+				return errors.New("Port is used but not for app!")
+			}
 		}
 	} else {
-		l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", gVar.IpAddress, gVar.port))
+		l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", gVar.IpAddress, gVar.Port))
 
 		if err != nil {
-			warnf("Unable to bind on %s:%d. App is running?", gVar.IpAddress, gVar.port)
-			os.Exit(1)
+			if gVar.Poll() {
+				os.Exit(1)
+				return errors.New("App is running....")
+			} else {
+				return errors.New("Port is used but not for app!")
+			}
+
+			//			gVar.Log("Unable to bind on %s:%d. App is running?", gVar.IpAddress, gVar.Port)
+			//			return errors.New("Can not bind to listens")
 		}
-		defer l.Close() //Close the connection if it's Open, otherwise doesn't do anything
+		if gVar.runtype != RUNFUNC {
+			defer l.Close() //Close the connection if it's Open, otherwise doesn't do anything
+		}
 		go func() {
 			for {
+				//				select {
+				//				case <-gVar.ctx.Done():
+				//					return gVar.ctx.Err()
+				//				case
 				conn, err := l.Accept()
-
 				if err != nil {
-					// handle error
-					warnf("Error tcp connections!")
-					time.Sleep(500 * time.Millisecond)
+					return
+					//					continue
 				}
 				// Make a buffer to hold incoming data.
-				warnf("New tcp connections!")
-				go handleRequest(conn, gVar)
+				//				gVar.Log("New tcp connections!")
+				go gVar.handleRequest(conn)
+				//				}
 			}
 		}()
 
-		warnf("Bind successfully on %s", l.Addr().String())
-		gVar.port, _ = strconv.Atoi(strings.Split(l.Addr().String(), ":")[1])
+		gVar.Log("Bind successfully on %s", l.Addr().String())
+		gVar.PortRuntime, _ = strconv.Atoi(strings.Split(l.Addr().String(), ":")[1])
 	}
 
 	if _, err := os.Stat(gVar.WorkDir); os.IsNotExist(err) {
 		// path/to/whatever does not exist
 		gVar.WorkDir = os.TempDir()
-		warnf("Auto change workdir to '%s", gVar.WorkDir)
+		gVar.Log("Auto change workdir to '%s", gVar.WorkDir)
 	}
 
-	err := syscall.Chdir(gVar.WorkDir)
+	err = syscall.Chdir(gVar.WorkDir)
 	if err != nil {
-		warnf("Switching to '%s' got error '%s'", gVar.WorkDir, err)
-		return
+		gVar.Log("Switching to '%s' got error '%s'", gVar.WorkDir, err)
+		return errors.New("Can not change workdir")
 	}
 
-	if len(gVar.args) < 1 {
-		warnf("You must specify a command\n")
-		return
-
-	}
-
-	execPath := gVar.args[0]
-	cmdArgs := gVar.args[1:]
-
-	execPath, err = exec.LookPath(execPath)
-
-	if err != nil {
-		warnf("Program is not exits: %s", execPath)
-		return
-	}
-	if !gVar.noBind && !gVar.isFunc {
-		warnf("Making sure all fd >= 3 is not close-on-exec")
-		closeOnExec(false)
-	}
-	warnf("Now staring application '%s' %v from %s\n", execPath, cmdArgs, gVar.WorkDir)
-	fmt.Println(gVar.port)
-
-	if gVar.isFunc {
-		return
-	}
-
-	go func() {
-		for {
-			//			sttyArgs := syscall.ProcAttr{
-			//				"",
-			//				syscall.Environ(),
-			//				[]uintptr{os.Stdin.Fd(), os.Stdout.Fd(), os.Stderr.Fd()},
-			//				nil,
-			//			}
-			//			pid, _ := syscall.ForkExec(execPath, cmdArgs, &sttyArgs)
-			//			process, err := os.FindProcess(int(pid))
-			//   			process.Wait()
-
-			//err = syscall.Exec(execPath, cmdArgs, syscall.Environ())
-
-			gVar.cmd = exec.Command(execPath, cmdArgs...)
-			gVar.cmd.Env = os.Environ()
-			gVar.cmd.SysProcAttr = &syscall.SysProcAttr{
-				Pdeathsig:  syscall.SIGTERM,
-				Foreground: false,
-				Setsid:     true,
-			}
-			//			warnf("Staring application '%s'", execPath)
-			err = gVar.cmd.Start()
-			warnf("Wait finished pid: %d", gVar.cmd.Process.Pid)
-			err = gVar.cmd.Wait()
-			//			warnf("%t:%s", gVar.loopCall, err.Error())
-			// && gVar.cmd.ProcessState.ExitCode() == -1
-
-			if gVar.loopCall && ((err != nil && "signal: killed" == err.Error()) || (err == nil)) {
-				warnf("Reload program: %s[%d]", execPath, gVar.cmd.ProcessState.Pid())
-			} else if err != nil {
-				warnf("Executing got error '%s'", err.Error())
-				gVar.finished <- struct{}{}
-				return
-			}
-
-			//			gVar.doneExec <- struct{}{}
-			warnf("Done staring application '%s'", execPath)
-			time.Sleep(1 * time.Second)
+	if gVar.runtype == RUNFUNC {
+		return nil
+	} else if gVar.runtype == RUNFILE || gVar.runtype == RUNBYTES {
+		if gVar.runtype == RUNBYTES {
+			defer os.Remove(gVar.ExeRealNameRuntime)
 		}
 
-	}()
-	_ = <-gVar.finished
+		if !gVar.noBind {
+			gVar.Log("Making sure all fd >= 3 is not close-on-exec")
 
+			closeOnExec(false)
+		}
+
+		gVar.Log("Now staring application monitor exec on port %d", gVar.PortRuntime)
+
+		go func() {
+			for {
+				//			sttyArgs := syscall.ProcAttr{
+				//				"",
+				//				syscall.Environ(),
+				//				[]uintptr{os.Stdin.Fd(), os.Stdout.Fd(), os.Stderr.Fd()},
+				//				nil,
+				//			}
+				//			pid, _ := syscall.ForkExec(execPath, cmdArgs, &sttyArgs)
+				//			process, err := os.FindProcess(int(pid))
+				//   			process.Wait()
+
+				//err = syscall.Exec(execPath, cmdArgs, syscall.Environ())
+				if err = gVar.GenerateCmd(); err != nil {
+					return
+				}
+
+				gVar.cmd.Env = os.Environ()
+				gVar.cmd.SysProcAttr = &syscall.SysProcAttr{
+					Pdeathsig:  syscall.SIGTERM,
+					Foreground: false,
+					Setsid:     true,
+					//					Setpgid:    true, // create group pid
+				}
+				//			gVar.Log("Staring application '%s'", execPath)
+				err = gVar.cmd.Start()                                                                       //start no block
+				if len(gVar.Exename) != 0 && path.Base(gVar.ExeRealNameRuntime) == path.Base(gVar.Exename) { //fake name
+					os.RemoveAll(path.Dir(gVar.ExeFullPathRuntime))
+				}
+
+				gVar.Log("Reload program: %s %+q [%d]", gVar.ExeFullPathRuntime, gVar.Args[:], gVar.cmd.Process.Pid)
+
+				//				gVar.Log("Wait finished pid: %d", gVar.cmd.Process.Pid)
+				//				err = gVar.cmd.Wait() //block waiting finish or error
+				go func() {
+					err = gVar.cmd.Wait()
+					gVar.doneExec <- struct{}{}
+				}()
+
+				select {
+				case <-gVar.ctx.Done():
+					if !sutils.IsProcessAlive(gVar.cmd.Process.Pid) {
+						//					if gVar.cmd.ProcessState != nil {
+						gVar.cmd.Process.Kill()
+					} else {
+						if !gVar.cmd.ProcessState.Success() {
+							gVar.Log("Program error exit")
+						}
+					}
+					//					gVar.Log("Done excute application '%s'", gVar.ExeRealNameRuntime)
+					return
+				case <-gVar.doneExec:
+					if gVar.LoopCall {
+						gVar.Log("Done excute application '%s'", gVar.ExeFullPathRuntime)
+						gVar.cmd.Process.Release()
+						time.Sleep(1 * time.Second)
+						continue
+					} else {
+						gVar.cancel()
+						return
+					}
+				}
+			}
+		}()
+		_ = <-gVar.ctx.Done()
+		time.Sleep(time.Millisecond * 100)
+	}
+	return nil
+}
+
+func NewAndRunOnce(port int) (*RunOnceConf, error) {
+	econf := NewRunOnceFuncPort(port)
+	//	econf.NoLog = false
+	return econf, econf.Run()
+}
+
+func RebornNewProgram(port int, newname string) bool {
+	var cntxt = &daemon.Context{
+		//	PidFileName: "/tmp/sample.pid",
+		PidFilePerm: 0644,
+		LogFileName: "/tmp/sample.log",
+		LogFilePerm: 0640,
+		WorkDir:     "./",
+		Umask:       027,
+		NameProg:    newname,
+		//	Args:        []string{"[go-daemon sample]"},
+	}
+
+	child, err := cntxt.Reborn()
+
+	//	if err != nil && child == nil {
+	//		if port != 0 {
+	//			NewAndRunOnce(port)
+	//		}
+	//	}
+	//	fmt.Println(child, err)
+	if err != nil { //error
+		//		fmt.Println("Unable to run: ", err)
+		if port != -1 {
+			NewAndRunOnce(port)
+		}
+		return false
+	}
+
+	if child != nil { //current is parrent [firt call]
+		//			updateDeamon()
+		return true //exit parrent
+	} else {
+		//current is child run [secon call]
+		//		defer cntxt.Release()
+		if port != -1 {
+			NewAndRunOnce(port)
+		}
+		return false
+	}
 }

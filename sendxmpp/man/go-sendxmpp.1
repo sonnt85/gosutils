@@ -1,0 +1,64 @@
+.\" generated with Ronn-NG/v0.9.0
+.\" http://github.com/apjanke/ronn-ng/tree/0.9.0
+.TH "GO\-SENDXMPP" "1" "April 2020" ""
+.SH "NAME"
+\fBgo\-sendxmpp\fR \- A little tool to send messages to an XMPP contact or MUC\.
+.SH "SYNOPSIS"
+\fBgo\-sendxmpp\fR [\-cdintx] [\-f value] [\-\-help] [\-j value] [\-m value] [\-p value] [\-r value] [\-u value] [parameters \|\.\|\.\|\.]
+.SH "DESCRIPTION"
+A little tool to send messages to an XMPP contact or MUC inspired by (but not as powerful as) \fBsendxmpp\fR\.
+.br
+You can either pipe a programs output to \fBgo\-sendxmpp\fR, write in your terminal (put \fB^D\fR in a new line to finish) or send the input from a file (\fB\-m\fR or \fB\-\-message\fR)\.
+.br
+The account data is expected at \fB~/\.sendxmpprc\fR if no other configuration file location is specified with \fB\-f\fR or \fB\-\-file\fR\.
+.SH "OPTIONS"
+.TP
+\fB\-c\fR, \fB\-\-chatroom\fR=[\fIvalue\fR]
+Send message to a chatroom\.
+.TP
+\fB\-d\fR, \fB\-\-debug\fR
+Show debugging info\.
+.TP
+\fB\-f\fR, \fB\-\-file\fR=[\fIvalue\fR]
+Set configuration file\. (Default: ~/\.sendxmpprc)
+.TP
+\fB\-\-help\fR
+Show help\.
+.TP
+\fB\-\-http\-upload=\fR[\fIvalue\fR]
+Send a file via http\-upload\.
+.TP
+\fB\-i\fR, \fB\-\-interactive\fR
+Interactive mode (for use with e\.g\. \fBtail \-f\fR)\.
+.TP
+\fB\-j\fR, \fB\-\-jserver\fR=[\fIvalue\fR]
+XMPP server address\.
+.TP
+\fB\-m\fR, \fB\-\-message\fR=[\fIvalue\fR]
+Set file including the message\.
+.TP
+\fB\-n\fR, \fB\-\-no\-tls\-verify\fR
+Skip verification of TLS certificates (not recommended)\.
+.TP
+\fB\-p\fR, \fB\-\-password\fR=[\fIvalue\fR]
+Password for XMPP account\.
+.TP
+\fB\-r\fR, \fB\-\-resource\fR=[\fIvalue\fR]
+Set resource\. When sending to a chatroom this is used as \'alias\'\. (Default: go\-sendxmpp)
+.TP
+\fB\-t\fR, \fB\-\-tls\fR
+Use TLS\.
+.TP
+\fB\-u\fR, \fB\-\-username\fR=[\fIvalue\fR]
+Username for XMPP account\.
+.TP
+\fB\-x\fR, \fB\-\-start\-tls\fR
+Use StartTLS\.
+.SH "AUTHOR"
+Written by Martin Dosch\.
+.SH "REPORTING BUGS"
+Report bugs at https://salsa\.debian\.org/mdosch/go\-sendxmpp/issues
+.SH "COPYRIGHT"
+Copyright (c) 2018 \- 2020 Martin Dosch License: BSD 2\-clause License
+.SH "SEE ALSO"
+go\-sendxmpp(5), sendxmpp(1)

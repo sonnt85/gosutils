@@ -18,6 +18,7 @@ import (
 	//	"strconv"
 
 	//	"context"
+	"fmt"
 	"strings"
 	"sync"
 	//	"time"
@@ -27,7 +28,7 @@ import (
 type Client struct {
 	*ssh.Client
 	config *ssh.ClientConfig
-	addr   string
+	Addr   string
 }
 
 func CopyReadWriters(a, b io.ReadWriter, close func()) {
@@ -104,7 +105,7 @@ func GetHostKey(host string) ssh.PublicKey {
 func NewClient(user, addr, keypass string) *Client {
 	auMethod, err := ClientAuthMethod(keypass)
 	if err != nil {
-		//		logger.Println(fmt.Sprintf("Cannot parse keypass: %s", keypass))
+		fmt.Println(fmt.Sprintf("Cannot parse keypass: %s", keypass))
 		return nil
 	}
 	config := &ssh.ClientConfig{
@@ -127,7 +128,7 @@ func Dial(network, addr string, config *ssh.ClientConfig) (*Client, error) {
 
 func (c *Client) Dial() error {
 	var err error
-	c.Client, err = ssh.Dial("tcp", c.addr, c.config)
+	c.Client, err = ssh.Dial("tcp", c.Addr, c.config)
 	if err == nil {
 		go func() {
 			c.Wait()
@@ -137,7 +138,7 @@ func (c *Client) Dial() error {
 	return err
 }
 
-func (c *Client) Run(cmd string) (stdout, stderr string, err error) {
+func (c *Client) Run(cmd string) (stdout, stderr []byte, err error) {
 	//	modes := ssh.TerminalModes{
 	//		ssh.ECHO:          0,     // disable echoing
 	//		ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
@@ -153,13 +154,25 @@ func (c *Client) Run(cmd string) (stdout, stderr string, err error) {
 	session.Stdout = &stdoutBuf
 	session.Stderr = &stderrBuf
 	session.Run(cmd)
-	stdout = stdoutBuf.String()
-	stderr = stderrBuf.String()
+	stdout = stdoutBuf.Bytes()
+	stderr = stderrBuf.Bytes()
 	return stdout, stderr, err
 }
 
 func (c *Client) Shell() (err error) {
 	return c.RunCommand("")
+}
+
+func (c *Client) SCPCopyPath(filePath, destinationPath string) (err error) {
+	session, err := c.NewSession()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		//		done <- true
+		session.Close()
+	}()
+	return CopyPath(filePath, destinationPath, session)
 }
 
 //func (c *Client) Run1(cmd string) (stdout, stderr string, err error) {
@@ -230,6 +243,14 @@ func (c *Client) RunCommand(cmd string) (err error) {
 
 // LocalForward performs a port forwarding over the ssh connection - ssh -L. Client will bind to the local address, and will tunnel those requests to host addr
 func (c *Client) LocalForward(retport chan int, laddrstr, raddrstr string) error {
+	doneRetPort := false
+
+	defer func() {
+		if !doneRetPort {
+			retport <- 0
+		}
+	}()
+
 	if laddrstr == "0" {
 		laddrstr = "localhost:0"
 	}
@@ -250,7 +271,6 @@ func (c *Client) LocalForward(retport chan int, laddrstr, raddrstr string) error
 		println(err.Error())
 		return err
 	}
-	doneRetPort := false
 
 	go func() {
 		select {
@@ -302,14 +322,20 @@ func (c *Client) LocalForward(retport chan int, laddrstr, raddrstr string) error
 
 	ln.Close()
 	quit <- true
-	if !doneRetPort {
-		<-retport
-	}
+
 	return nil
 }
 
 // RemoteForward forwards a remote port - ssh -R
 func (c *Client) RemoteForward(retport chan int, remote, local string) error {
+	doneRetPort := false
+
+	defer func() {
+		if !doneRetPort {
+			retport <- 0
+		}
+	}()
+
 	if remote == "0" {
 		remote = "localhost:0"
 	}
@@ -318,7 +344,6 @@ func (c *Client) RemoteForward(retport chan int, remote, local string) error {
 		println(err.Error())
 		return err
 	}
-	doneRetPort := false
 
 	go func() {
 		select {
@@ -365,9 +390,6 @@ func (c *Client) RemoteForward(retport chan int, remote, local string) error {
 	c.Wait()
 	ln.Close()
 	quit <- true
-	if !doneRetPort {
-		<-retport
-	}
 
 	return nil
 }

@@ -2,9 +2,9 @@ package shellwords
 
 import (
 	"bytes"
+	sw "github.com/mattn/go-shellwords"
 	"regexp"
-
-	sw "github.com/sonnt85/goutils/shellwords"
+	//	sw "github.com/sonnt85/gosutils/shellwords"
 )
 
 // Split a string into an array of tokens in the same way the UNIX Bourne shell does.
@@ -14,7 +14,18 @@ func Split(line string) ([]string, error) {
 
 // Join builds a command line string from an argument list by joining
 // all elements escaped for Bourne shell and separated by a space.
-func Join(words []string) string {
+func Join1(words []string) string {
+	var buf bytes.Buffer
+	for i, w := range words {
+		if i != 0 {
+			buf.WriteByte(' ')
+		}
+		buf.WriteString(Escape(w))
+	}
+	return buf.String()
+}
+
+func Join(words ...string) string {
 	var buf bytes.Buffer
 	for i, w := range words {
 		if i != 0 {

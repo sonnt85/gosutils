@@ -1,0 +1,31 @@
+go-sendxmpp(5) -- A little tool to send messages to an XMPP contact or MUC.
+====
+
+## LOCATION
+
+The account data is expected at ~/.sendxmpprc if no other configuration file location is specified with -f or --file. The configuration file is expected to be in the following format:
+
+## FORMAT
+
+username: [<your_username>]    
+jserver: [<jabber_server>]    
+port: [<jabber_port>]    
+password: [<your_jabber_password>]    
+
+## AUTHOR
+
+Written by Martin Dosch.
+
+## REPORTING BUGS
+
+
+Report bugs at https://salsa.debian.org/mdosch/go-sendxmpp/issues
+
+## COPYRIGHT
+
+Copyright (c) 2018 - 2020 Martin Dosch
+License: BSD 2-clause License
+
+## SEE ALSO
+
+go-sendxmpp(1), sendxmpp(1)

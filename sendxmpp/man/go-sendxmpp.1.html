@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv='content-type' content='text/html;charset=utf8'>
+  <meta name='generator' content='Ronn-NG/v0.9.0 (http://github.com/apjanke/ronn-ng/tree/0.9.0)'>
+  <title>go-sendxmpp(1) - A little tool to send messages to an XMPP contact or MUC.</title>
+  <style type='text/css' media='all'>
+  /* style: man */
+  body#manpage {margin:0}
+  .mp {max-width:100ex;padding:0 9ex 1ex 4ex}
+  .mp p,.mp pre,.mp ul,.mp ol,.mp dl {margin:0 0 20px 0}
+  .mp h2 {margin:10px 0 0 0}
+  .mp > p,.mp > pre,.mp > ul,.mp > ol,.mp > dl {margin-left:8ex}
+  .mp h3 {margin:0 0 0 4ex}
+  .mp dt {margin:0;clear:left}
+  .mp dt.flush {float:left;width:8ex}
+  .mp dd {margin:0 0 0 9ex}
+  .mp h1,.mp h2,.mp h3,.mp h4 {clear:left}
+  .mp pre {margin-bottom:20px}
+  .mp pre+h2,.mp pre+h3 {margin-top:22px}
+  .mp h2+pre,.mp h3+pre {margin-top:5px}
+  .mp img {display:block;margin:auto}
+  .mp h1.man-title {display:none}
+  .mp,.mp code,.mp pre,.mp tt,.mp kbd,.mp samp,.mp h3,.mp h4 {font-family:monospace;font-size:14px;line-height:1.42857142857143}
+  .mp h2 {font-size:16px;line-height:1.25}
+  .mp h1 {font-size:20px;line-height:2}
+  .mp {text-align:justify;background:#fff}
+  .mp,.mp code,.mp pre,.mp pre code,.mp tt,.mp kbd,.mp samp {color:#131211}
+  .mp h1,.mp h2,.mp h3,.mp h4 {color:#030201}
+  .mp u {text-decoration:underline}
+  .mp code,.mp strong,.mp b {font-weight:bold;color:#131211}
+  .mp em,.mp var {font-style:italic;color:#232221;text-decoration:none}
+  .mp a,.mp a:link,.mp a:hover,.mp a code,.mp a pre,.mp a tt,.mp a kbd,.mp a samp {color:#0000ff}
+  .mp b.man-ref {font-weight:normal;color:#434241}
+  .mp pre {padding:0 4ex}
+  .mp pre code {font-weight:normal;color:#434241}
+  .mp h2+pre,h3+pre {padding-left:0}
+  ol.man-decor,ol.man-decor li {margin:3px 0 10px 0;padding:0;float:left;width:33%;list-style-type:none;text-transform:uppercase;color:#999;letter-spacing:1px}
+  ol.man-decor {width:100%}
+  ol.man-decor li.tl {text-align:left}
+  ol.man-decor li.tc {text-align:center;letter-spacing:4px}
+  ol.man-decor li.tr {text-align:right;float:right}
+  </style>
+</head>
+<!--
+  The following styles are deprecated and will be removed at some point:
+  div#man, div#man ol.man, div#man ol.head, div#man ol.man.
+
+  The .man-page, .man-decor, .man-head, .man-foot, .man-title, and
+  .man-navigation should be used instead.
+-->
+<body id='manpage'>
+  <div class='mp' id='man'>
+
+  <div class='man-navigation' style='display:none'>
+    <a href="#NAME">NAME</a>
+    <a href="#SYNOPSIS">SYNOPSIS</a>
+    <a href="#DESCRIPTION">DESCRIPTION</a>
+    <a href="#OPTIONS">OPTIONS</a>
+    <a href="#AUTHOR">AUTHOR</a>
+    <a href="#REPORTING-BUGS">REPORTING BUGS</a>
+    <a href="#COPYRIGHT">COPYRIGHT</a>
+    <a href="#SEE-ALSO">SEE ALSO</a>
+  </div>
+
+  <ol class='man-decor man-head man head'>
+    <li class='tl'>go-sendxmpp(1)</li>
+    <li class='tc'></li>
+    <li class='tr'>go-sendxmpp(1)</li>
+  </ol>
+
+  
+
+<h2 id="NAME">NAME</h2>
+<p class="man-name">
+  <code>go-sendxmpp</code> - <span class="man-whatis">A little tool to send messages to an XMPP contact or MUC.</span>
+</p>
+<h2 id="SYNOPSIS">SYNOPSIS</h2>
+
+<p><code>go-sendxmpp</code> [-cdintx] [-f value] [--help] [-j value] [-m value] [-p value] [-r value] [-u value] [parameters ...]</p>
+
+<h2 id="DESCRIPTION">DESCRIPTION</h2>
+
+<p>A little tool to send messages to an XMPP contact or MUC inspired by (but not as powerful as) <code>sendxmpp</code>.  <br>
+You can either pipe a programs output to <code>go-sendxmpp</code>, write in your terminal (put <code>^D</code> in a new line to finish) or send the input from a file (<code>-m</code> or <code>--message</code>).  <br>
+The account data is expected at <code>~/.sendxmpprc</code> if no other configuration file location is specified with <code>-f</code> or <code>--file</code>.</p>
+
+<h2 id="OPTIONS">OPTIONS</h2>
+
+<dl>
+<dt>
+<code>-c</code>, <code>--chatroom</code>=[<var>value</var>]</dt>
+<dd>Send message to a chatroom.</dd>
+<dt>
+<code>-d</code>, <code>--debug</code>
+</dt>
+<dd>Show debugging info.</dd>
+<dt>
+<code>-f</code>, <code>--file</code>=[<var>value</var>]</dt>
+<dd>Set configuration file. (Default: ~/.sendxmpprc)</dd>
+<dt><code>--help</code></dt>
+<dd>Show help.</dd>
+<dt>
+<code>--http-upload=</code>[<var>value</var>]</dt>
+<dd>Send a file via http-upload.</dd>
+<dt>
+<code>-i</code>, <code>--interactive</code>
+</dt>
+<dd>Interactive mode (for use with e.g. <code>tail -f</code>).</dd>
+<dt>
+<code>-j</code>, <code>--jserver</code>=[<var>value</var>]</dt>
+<dd>XMPP server address.</dd>
+<dt>
+<code>-m</code>, <code>--message</code>=[<var>value</var>]</dt>
+<dd>Set file including the message.</dd>
+<dt>
+<code>-n</code>, <code>--no-tls-verify</code>
+</dt>
+<dd>Skip verification of TLS certificates (not recommended).</dd>
+<dt>
+<code>-p</code>, <code>--password</code>=[<var>value</var>]</dt>
+<dd>Password for XMPP account.</dd>
+<dt>
+<code>-r</code>, <code>--resource</code>=[<var>value</var>]</dt>
+<dd>Set resource. When sending to a chatroom this is used as
+'alias'. (Default: go-sendxmpp)</dd>
+<dt>
+<code>-t</code>, <code>--tls</code>
+</dt>
+<dd>Use TLS.</dd>
+<dt>
+<code>-u</code>, <code>--username</code>=[<var>value</var>]</dt>
+<dd>Username for XMPP account.</dd>
+<dt>
+<code>-x</code>, <code>--start-tls</code>
+</dt>
+<dd>Use StartTLS.</dd>
+</dl>
+
+<h2 id="AUTHOR">AUTHOR</h2>
+
+<p>Written by Martin Dosch.</p>
+
+<h2 id="REPORTING-BUGS">REPORTING BUGS</h2>
+
+<p>Report bugs at https://salsa.debian.org/mdosch/go-sendxmpp/issues</p>
+
+<h2 id="COPYRIGHT">COPYRIGHT</h2>
+
+<p>Copyright (c) 2018 - 2020 Martin Dosch
+License: BSD 2-clause License</p>
+
+<h2 id="SEE-ALSO">SEE ALSO</h2>
+
+<p><span class="man-ref">go-sendxmpp<span class="s">(5)</span></span>, <span class="man-ref">sendxmpp<span class="s">(1)</span></span></p>
+
+  <ol class='man-decor man-foot man foot'>
+    <li class='tl'></li>
+    <li class='tc'>April 2020</li>
+    <li class='tr'>go-sendxmpp(1)</li>
+  </ol>
+
+  </div>
+</body>
+</html>

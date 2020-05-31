@@ -204,11 +204,18 @@ func NewServer(User, addr, keypass, Pubkeys string) *Server {
 }
 
 func (s *Server) Start(retport chan int) error {
+	doneRetPort := false
+
+	defer func() {
+		if !doneRetPort {
+			retport <- 0
+		}
+	}()
+
 	ln, err := net.Listen("tcp4", s.Addr)
 	if err != nil {
 		return err
 	}
-	doneRetPort := false
 	go func() {
 		select {
 		case retport <- ln.Addr().(*net.TCPAddr).Port:
@@ -217,9 +224,7 @@ func (s *Server) Start(retport chan int) error {
 		}
 	}()
 	err = s.Serve(ln)
-	if !doneRetPort {
-		<-retport
-	}
+
 	return err
 	//	return s.ListenAndServe()
 }

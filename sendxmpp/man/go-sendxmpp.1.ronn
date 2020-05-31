@@ -1,0 +1,75 @@
+go-sendxmpp(1) -- A little tool to send messages to an XMPP contact or MUC.
+====
+
+## SYNOPSIS
+
+`go-sendxmpp` [-cdintx] [-f value] [--help] [-j value] [-m value] [-p value] [-r value] [-u value] [parameters ...]
+
+## DESCRIPTION
+
+A little tool to send messages to an XMPP contact or MUC inspired by (but not as powerful as) `sendxmpp`.    
+You can either pipe a programs output to `go-sendxmpp`, write in your terminal (put `^D` in a new line to finish) or send the input from a file (`-m` or `--message`).    
+The account data is expected at `~/.sendxmpprc` if no other configuration file location is specified with `-f` or `--file`.
+
+## OPTIONS
+
+* `-c`, `--chatroom`=[<value>]:
+Send message to a chatroom.
+
+* `-d`, `--debug`:
+Show debugging info.
+
+* `-f`, `--file`=[<value>]:
+Set configuration file. (Default: ~/.sendxmpprc)
+
+* `--help`:
+Show help.
+
+* `--http-upload=`[<value>]:
+Send a file via http-upload.
+
+* `-i`, `--interactive`:
+Interactive mode (for use with e.g. `tail -f`).
+
+* `-j`, `--jserver`=[<value>]:
+XMPP server address.
+
+* `-m`, `--message`=[<value>]:
+Set file including the message.
+
+* `-n`, `--no-tls-verify`:
+Skip verification of TLS certificates (not recommended).
+
+* `-p`, `--password`=[<value>]:
+Password for XMPP account.
+
+* `-r`, `--resource`=[<value>]:
+Set resource. When sending to a chatroom this is used as
+'alias'. (Default: go-sendxmpp)
+
+* `-t`, `--tls`:
+Use TLS.
+
+* `-u`, `--username`=[<value>]:
+Username for XMPP account.
+
+* `-x`, `--start-tls`:
+Use StartTLS.
+
+## AUTHOR
+
+Written by Martin Dosch.
+
+## REPORTING BUGS
+
+
+Report bugs at https://salsa.debian.org/mdosch/go-sendxmpp/issues
+
+## COPYRIGHT
+
+Copyright (c) 2018 - 2020 Martin Dosch
+License: BSD 2-clause License
+
+## SEE ALSO
+
+go-sendxmpp(5), sendxmpp(1)
