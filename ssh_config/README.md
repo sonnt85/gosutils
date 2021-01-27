@@ -26,7 +26,7 @@ Host *.test
 `
 
 cfg, err := ssh_config.Decode(strings.NewReader(config))
-fmt.Println(cfg.Get("example.test", "Port"))
+log.Println(cfg.Get("example.test", "Port"))
 ```
 
 Some SSH arguments have default values - for example, the default value for
@@ -43,16 +43,16 @@ disk.
 f, _ := os.Open(filepath.Join(os.Getenv("HOME"), ".ssh", "config"))
 cfg, _ := ssh_config.Decode(f)
 for _, host := range cfg.Hosts {
-    fmt.Println("patterns:", host.Patterns)
+    log.Println("patterns:", host.Patterns)
     for _, node := range host.Nodes {
         // Manipulate the nodes as you see fit, or use a type switch to
         // distinguish between Empty, KV, and Include nodes.
-        fmt.Println(node.String())
+        log.Println(node.String())
     }
 }
 
 // Print the config to stdout:
-fmt.Println(cfg.String())
+log.Println(cfg.String())
 ```
 
 ## Spec compliance

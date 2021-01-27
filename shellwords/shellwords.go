@@ -2,14 +2,14 @@ package shellwords
 
 import (
 	"bytes"
-	sw "github.com/mattn/go-shellwords"
+	//	sw "github.com/mattn/go-shellwords"
 	"regexp"
 	//	sw "github.com/sonnt85/gosutils/shellwords"
 )
 
 // Split a string into an array of tokens in the same way the UNIX Bourne shell does.
 func Split(line string) ([]string, error) {
-	return sw.Parse(line)
+	return Parse(line)
 }
 
 // Join builds a command line string from an argument list by joining

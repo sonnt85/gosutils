@@ -1,7 +1,7 @@
 package simplessh_test
 
 import (
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 
 	"golang.org/x/crypto/ssh"

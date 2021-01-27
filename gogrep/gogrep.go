@@ -3,27 +3,65 @@ package gogrep
 import (
 	"bufio"
 	"bytes"
+	"io/ioutil"
 	"os"
 	"regexp"
+	"strings"
 )
 
-func grepFile(file string, pat []byte) bool {
+func grepFile(file string, pat []byte) (retarray []string, err error) {
+	//	var retarray []string
 	f, err := os.Open(file)
 	if err != nil {
-		return false
+		return retarray, err
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		matched, _ := regexp.Match(string(pat), scanner.Bytes())
-		if matched {
-			return true
+		r, err := regexp.Compile(string(pat))
+		if err != nil {
+			return retarray, err
+		}
+		if datas := r.FindAllString(string(scanner.Bytes()), -1); datas != nil {
+			retarray = append(retarray, datas...)
+			//		matched, _ := regexp.Match(, scanner.Bytes())
 		}
 	}
-	return false
+	return retarray, err
 }
 
-func grepfFile(file string, pat []byte) bool {
+func GrepString(data string, pat []byte) (retarray []string, err error) {
+	scanner := bufio.NewScanner(strings.NewReader(data))
+	for scanner.Scan() {
+		r, err := regexp.Compile(string(pat))
+		if err != nil {
+			return retarray, err
+		}
+		if datas := r.FindAllString(string(scanner.Bytes()), -1); datas != nil {
+			retarray = append(retarray, datas...)
+			//		matched, _ := regexp.Match(, scanner.Bytes())
+		}
+	}
+	return retarray, err
+}
+
+func GrepMutipleLines(data string, pat []byte) (retarray []string, err error) {
+	allbytes, err := ioutil.ReadFile(data)
+	if err != nil {
+		return retarray, err
+	}
+
+	r, err := regexp.Compile(string(pat))
+	if err != nil {
+		return retarray, err
+	}
+
+	retarray = r.FindAllString(string(allbytes), -1)
+
+	return retarray, err
+}
+
+func grepFFile(file string, pat []byte) bool {
 	f, err := os.Open(file)
 	if err != nil {
 		return false
@@ -38,10 +76,15 @@ func grepfFile(file string, pat []byte) bool {
 	return false
 }
 
-func Grep(filepath, pattern string) bool {
-	return grepFile(filepath, []byte(pattern))
+func GrepMatch(filepath, pattern string) bool {
+	ret, err := grepFile(filepath, []byte(pattern))
+	if len(ret) != 0 && err == nil {
+		return true
+	} else {
+		return false
+	}
 }
 
-func Grepf(filepath, pattern string) bool {
-	return grepfFile(filepath, []byte(pattern))
+func GrepF(filepath, pattern string) bool {
+	return grepFFile(filepath, []byte(pattern))
 }

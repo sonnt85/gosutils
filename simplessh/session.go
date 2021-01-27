@@ -16,7 +16,7 @@ import (
 
 // Request types used in sessions - RFC 4254 6.X
 const (
-	SessionRequest               = "session"       // RFC 4254 6.1 login ssh 
+	SessionRequest               = "session"       // RFC 4254 6.1 login ssh
 	PTYRequest                   = "pty-req"       // RFC 4254 6.2
 	X11Request                   = "x11-req"       // RFC 4254 6.3.1
 	X11ChannelRequest            = "x11"           // RFC 4254 6.3.2
@@ -98,7 +98,7 @@ func SessionChannel(newChannel ssh.NewChannel, channel ssh.Channel, reqs <-chan 
 
 						err = ssh.Unmarshal(working, &tm)
 						if err != nil {
-							fmt.Println(err.Error())
+							log.Println(err.Error())
 							break
 						}
 					*/

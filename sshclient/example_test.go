@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/sonnt85/gosutils/sshclient"
 	"golang.org/x/crypto/ssh"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"testing"
 )
@@ -38,7 +38,7 @@ o4z7t5dRAoGBAJ9M1SkT7/0NazGmfV1qqkuJATAGMaqKRpIYmI1mTPaLATG1WU99
 -----END RSA PRIVATE KEY-----`
 
 func TestClientConfig() {
-	fmt.Println("")
+	log.Println("")
 	config := &ssh.ClientConfig{
 		User: "public",
 		Auth: []ssh.AuthMethod{

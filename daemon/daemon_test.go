@@ -2,7 +2,7 @@ package daemon
 
 import (
 	"flag"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"syscall"
 	"time"

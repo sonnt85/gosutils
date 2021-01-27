@@ -5,7 +5,7 @@
 // Uses include:
 //  func main() {
 //    job := func() {
-//	fmt.Println("Time's up!")
+//	log.Println("Time's up!")
 //    }
 //    scheduler.Every(5).Seconds().Run(function)
 //    scheduler.Every().Day().Run(function)

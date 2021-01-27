@@ -2,7 +2,7 @@ package gosed
 
 import (
 	"io"
-        "strings"
+	"strings"
 	"testing"
 )
 

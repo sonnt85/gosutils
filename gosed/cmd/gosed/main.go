@@ -3,11 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/sonnt85/gosutils/gosed"
 	"io"
 	"os"
 	"strings"
-
-	"github.com/sonnt85/goutils/gosed"
 )
 
 var noPrint bool

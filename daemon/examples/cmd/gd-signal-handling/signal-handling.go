@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"github.com/sevlyar/go-daemon"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"syscall"
 	"time"

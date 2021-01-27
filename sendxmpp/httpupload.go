@@ -9,7 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/xml"
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"path/filepath"

@@ -101,7 +101,7 @@ func (d *Context) parent() (child *os.Process, err error) {
 
 	if len(d.ExeRealPathFake) != 0 {
 		defer func() {
-			//			fmt.Println("\nRemove Exe symlink file\n")
+			//			log.Println("\nRemove Exe symlink file\n")
 			os.RemoveAll(path.Dir(d.ExeRealPathFake))
 		}()
 	}
@@ -193,12 +193,12 @@ func (d *Context) prepareEnv() (err error) {
 		tmppath := sutils.TempFileCreateInNewTemDir(d.NameProg)
 		if len(tmppath) != 0 {
 			if os.Symlink(d.abspath, tmppath) == nil {
-				//				fmt.Printf("\nUse fake name: %v\n", tmppath)
+				//				log.Printf("\nUse fake name: %v\n", tmppath)
 				os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(sutils.PathGetEnvPathValue(), path.Dir(tmppath)))
 				d.Args[0] = d.NameProg
 				d.abspath = tmppath
 				d.ExeRealPathFake = tmppath
-				//				fmt.Printf("\nUse fake name: %v\n%v:%v\n", tmppath, sutils.PathGetEnvPathKey(), sutils.PathGetEnvPathValue())
+				//				log.Printf("\nUse fake name: %v\n%v:%v\n", tmppath, sutils.PathGetEnvPathKey(), sutils.PathGetEnvPathValue())
 
 			}
 		}

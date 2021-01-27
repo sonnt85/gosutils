@@ -4,7 +4,7 @@ import (
 	"flag"
 	"golang.org/x/net/websocket"
 	"io"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"net/http"
 	"os"

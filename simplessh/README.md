@@ -16,7 +16,7 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/sonnt85/gosutils/simplessh"
 
@@ -62,7 +62,7 @@ func main() {
 package main
 
 import (
-	"log"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/sonnt85/gosutils/simplessh"
 	"golang.org/x/crypto/ssh"

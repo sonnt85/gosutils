@@ -5,57 +5,71 @@ import (
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rand"
-	"encoding/base64"
+	//	"encoding/base64"
 	"encoding/hex"
+	"io/ioutil"
 	//	"fmt"
+	"io"
+	"os"
 )
 
-func CreateHash(key string) string {
+func CreateHash(key []byte) string {
 	hasher := md5.New()
 	hasher.Write([]byte(key))
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
-func EreateHash(data []byte, passphrase string) []byte {
+func EncryptHash(data []byte, passphrase []byte) (retbytes []byte, err error) {
 	block, _ := aes.NewCipher([]byte(CreateHash(passphrase)))
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		println(err.Error())
+		return retbytes, err
 	}
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		println(err.Error())
+		return retbytes, err
 	}
 	ciphertext := gcm.Seal(nonce, nonce, data, nil)
-	return ciphertext
+	return ciphertext, nil
 }
 
-func DecryptHash(data []byte, passphrase string) []byte {
+func DecryptHash(data []byte, passphrase []byte) (retbytes []byte, err error) {
 	key := []byte(CreateHash(passphrase))
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		println(err.Error())
+		return retbytes, err
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		println(err.Error())
+		return retbytes, err
 	}
 	nonceSize := gcm.NonceSize()
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		println(err.Error())
+		return retbytes, err
 	}
-	return plaintext
+	return plaintext, nil
 }
 
-func EreateHashFile(filename string, data []byte, passphrase string) {
-	f, _ := os.Create(filename)
+func EncryptHashFile(filename string, data []byte, passphrase []byte) (err error) {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
 	defer f.Close()
-	f.Write(EreateHash(data, passphrase))
+	byteread, err := EncryptHash(data, passphrase)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(byteread)
+	return err
 }
 
-func DecryptFile(filename string, passphrase string) []byte {
-	data, _ := ioutil.ReadFile(filename)
-	return decrypt(data, passphrase)
+func DecryptFile(filename string, passphrase []byte) (retbytes []byte, err error) {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return retbytes, err
+	}
+	return DecryptHash(data, passphrase)
 }

@@ -16,14 +16,14 @@
 //	f, _ := os.Open(filepath.Join(os.Getenv("HOME"), ".ssh", "config"))
 //	cfg, _ := ssh_config.Decode(f)
 //	for _, host := range cfg.Hosts {
-//		fmt.Println("patterns:", host.Patterns)
+//		log.Println("patterns:", host.Patterns)
 //		for _, node := range host.Nodes {
-//			fmt.Println(node.String())
+//			log.Println(node.String())
 //		}
 //	}
 //
 //	// Write the cfg back to disk:
-//	fmt.Println(cfg.String())
+//	log.Println(cfg.String())
 //
 // BUG: the Match directive is currently unsupported; parsing a config with
 // a Match directive will trigger an error.

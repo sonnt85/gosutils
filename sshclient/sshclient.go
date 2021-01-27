@@ -1,6 +1,8 @@
 package sshclient
 
 import (
+	log "github.com/sirupsen/logrus"
+
 	"bufio"
 	"bytes"
 	//	"fmt"
@@ -105,7 +107,7 @@ func GetHostKey(host string) ssh.PublicKey {
 func NewClient(user, addr, keypass string) *Client {
 	auMethod, err := ClientAuthMethod(keypass)
 	if err != nil {
-		fmt.Println(fmt.Sprintf("Cannot parse keypass: %s", keypass))
+		log.Println(fmt.Sprintf("Cannot parse keypass: %s", keypass))
 		return nil
 	}
 	config := &ssh.ClientConfig{
@@ -153,7 +155,7 @@ func (c *Client) Run(cmd string) (stdout, stderr []byte, err error) {
 	var stdoutBuf, stderrBuf bytes.Buffer
 	session.Stdout = &stdoutBuf
 	session.Stderr = &stderrBuf
-	session.Run(cmd)
+	err = session.Run(cmd)
 	stdout = stdoutBuf.Bytes()
 	stderr = stderrBuf.Bytes()
 	return stdout, stderr, err
@@ -163,7 +165,7 @@ func (c *Client) Shell() (err error) {
 	return c.RunCommand("")
 }
 
-func (c *Client) SCPCopyPath(filePath, destinationPath string) (err error) {
+func (c *Client) SCPFromRemote(sourcePath, destinationPath string, ignErr, IsQuiet bool) (err error) {
 	session, err := c.NewSession()
 	if err != nil {
 		return err
@@ -172,7 +174,65 @@ func (c *Client) SCPCopyPath(filePath, destinationPath string) (err error) {
 		//		done <- true
 		session.Close()
 	}()
-	return CopyPath(filePath, destinationPath, session)
+	//	type SecureCopier struct {
+	//	IsRecursive bool
+	//	IsQuiet   bool
+	//	IsVerbose bool
+	//	inPipe  io.Reader
+	//	outPipe io.Writer
+	//	errPipe io.Writer
+	//	srcFile string
+	//	dstFile string
+	//}
+
+	scp := &SecureCopier{
+		srcFile:     sourcePath,
+		dstFile:     destinationPath,
+		IsQuiet:     IsQuiet,
+		ignErr:      ignErr,
+		IsRecursive: true,
+		IsVerbose:   !IsQuiet,
+
+		//		inPipe:      os.Stdin,
+		//		outPipe:     os.Stdout,
+		//		errPipe:     os.Stdout,
+	}
+
+	return scpFromRemote(scp, session)
+}
+
+func (c *Client) SCPToRemote(sourcePath, destinationPath string, ignErr, IsQuiet bool) (err error) {
+	session, err := c.NewSession()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		//		done <- true
+		session.Close()
+	}()
+	//	type SecureCopier struct {
+	//	IsRecursive bool
+	//	IsQuiet   bool
+	//	IsVerbose bool
+	//	inPipe  io.Reader
+	//	outPipe io.Writer
+	//	errPipe io.Writer
+	//	srcFile string
+	//	dstFile string
+	//}
+
+	scp := &SecureCopier{
+		srcFile:     sourcePath,
+		dstFile:     destinationPath,
+		IsQuiet:     IsQuiet,
+		ignErr:      ignErr,
+		IsRecursive: true,
+		IsVerbose:   !IsQuiet,
+		//		inPipe:      os.Stdin,
+		//		outPipe:     os.Stdout,
+		//		errPipe:     os.Stdout,
+	}
+	return scpToRemote(scp, session)
 }
 
 //func (c *Client) Run1(cmd string) (stdout, stderr string, err error) {
@@ -221,7 +281,7 @@ func (c *Client) RunCommand(cmd string) (err error) {
 		}
 
 		err = session.RequestPty(tertype, termHeight, termWidth, modes)
-		//		fmt.Printf("%dx%d\n", termWidth, termHeight)
+		//		log.Printf("%dx%d\n", termWidth, termHeight)
 		if err != nil {
 			return err
 		}
@@ -279,7 +339,7 @@ func (c *Client) LocalForward(retport chan int, laddrstr, raddrstr string) error
 			return
 		}
 	}()
-	//	fmt.Println("[LocalForward] Listening on address: ", ln.Addr().String())
+	//	log.Println("[LocalForward] Listening on address: ", ln.Addr().String())
 
 	quit := make(chan bool)
 
@@ -305,7 +365,6 @@ func (c *Client) LocalForward(retport chan int, laddrstr, raddrstr string) error
 						close := func() {
 							conn.Close()
 							conn2.Close()
-
 						}
 
 						go CopyReadWriters(conn, conn2, close)
@@ -353,7 +412,7 @@ func (c *Client) RemoteForward(retport chan int, remote, local string) error {
 			return
 		}
 	}()
-	//	fmt.Println("[Remote forward] Listening on address: ", ln.Addr().String())
+	//	log.Println("[Remote forward] Listening on address: ", ln.Addr().String())
 
 	quit := make(chan bool)
 
@@ -374,13 +433,13 @@ func (c *Client) RemoteForward(retport chan int, remote, local string) error {
 					continue
 				}
 
-				close := func() {
+				closefunc := func() {
 					conn.Close()
 					conn2.Close()
 
 				}
 
-				go CopyReadWriters(conn, conn2, close)
+				go CopyReadWriters(conn, conn2, closefunc)
 
 			}
 

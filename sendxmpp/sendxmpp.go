@@ -10,9 +10,11 @@ import (
 	"bufio"
 	"crypto/tls"
 	"errors"
-	"fmt"
+	//	"fmt"
 	"io"
-	"log"
+	//	log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
+
 	"os"
 	"os/user"
 	"runtime"
@@ -194,8 +196,24 @@ func (c *XMPPClient) Reset() { //default config
 	c.TLS = false
 	c.User = "bluemoutain85@gmail.com"
 	c.Message = ""
+	c.Resource = "sendxmpp"
 }
 
+//				sendxmppCmd.Flags().StringSliceVarP(&, "to", "T", []string{"thanhson.rf@gmail.com"}, "Recipients slide string")
+//	sendxmppCmd.Flags().StringVarP(&, "http-upload", "", "", "Send a file via http-upload.")
+//	sendxmppCmd.Flags().BoolVarP(&, "debug", "d", false, "Show debugging info.")
+//	sendxmppCmd.Flags().StringVarP(&, "jserver", "j", xmppclient.Server, "XMPP server address [talk.google.com].")
+//	sendxmppCmd.Flags().StringVarP(&, "username", "u", xmppclient.User, "Username for XMPP account [user@gmail.com].")
+//	sendxmppCmd.Flags().StringVarP(&, "password", "p", xmppclient.Password, "Password for XMPP account.")
+//	sendxmppCmd.Flags().BoolVarP(&, "chatroom", "c", false, "Send message to a chatroom.")
+//	sendxmppCmd.Flags().BoolVarP(&, "tls", "t", xmppclient.TLS, "Use TLS.")
+//	sendxmppCmd.Flags().BoolVarP(&, "start-tls", "x", xmppclient.StartTLS, "Use StartTLS.")
+//	sendxmppCmd.Flags().StringVarP(&, "resource", "r", "sendxmpp", "Set resource. "+
+//		"When sending to a chatroom this is used as 'alias'. (Default: sendxmpp)")
+//	sendxmppCmd.Flags().StringVarP(&, "file", "f", "", "Set configuration file. (Default: ~/.sendxmpprc)")
+//	sendxmppCmd.Flags().StringVarP(&, "message", "m", "", "Set file including the message.")
+//	sendxmppCmd.Flags().BoolVarP(&, "interactive", "i", false, "Interactive mode (for use with e.g. 'tail -f').")
+//	sendxmppCmd.Flags().BoolVarP(&, "no-tls-verify", "n", false, "Skip verification of TLS certificates (not recommended).")
 func NewXMPP(user, server, password string) *XMPPClient {
 	conf := &XMPPClient{}
 	conf.Reset()
@@ -244,7 +262,7 @@ func (conf *XMPPClient) SendMessage(message string, recipients []string) (err er
 	}
 
 	if conf.Debug {
-		fmt.Printf("%+v\n", conf)
+		log.Printf("%+v\n", conf)
 	}
 	// Read configuration file if user, server or password is not specified.
 	if conf.User == "" || conf.Server == "" || conf.Password == "" {

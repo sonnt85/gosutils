@@ -26,7 +26,7 @@ import (
 	"image"
 	"image/png"
 
-	"log"
+	log "github.com/sirupsen/logrus"
 	"math"
 	"net"
 	"os"

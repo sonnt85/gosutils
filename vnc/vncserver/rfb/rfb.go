@@ -28,7 +28,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"strconv"
 	"sync"

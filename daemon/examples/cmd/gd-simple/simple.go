@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"html"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net/http"
 
 	"github.com/sevlyar/go-daemon"

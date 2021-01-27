@@ -8,7 +8,7 @@ An implementation of sed in Go.  Just because!
 versions of the same. It takes '-help'.
   * __Lexer__: Complete.
   * __Parser/Engine__:  Has every command in a typical sed now. 
- It has:  a\, i\, c\, d, D, p, P, g, G, x, h, H, r, w, s, y, b, t, :label, n, N, q, =.
+ It has:  a, i, c, d, D, p, P, g, G, x, h, H, r, w, s, y, b, t, :label, n, N, q, =.
 
 This `sed` engine can be embedded in your program, wrapping any `io.Reader` so that
 the stream is lazily processed as you read from it.  Of course I also have a command-line

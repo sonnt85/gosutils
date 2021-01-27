@@ -1,14 +1,23 @@
 package sshserver
 
 import (
-	"fmt"
+	//	"fmt"
+	//	"encoding/hex"
+
+	log "github.com/sirupsen/logrus"
+
 	gossh "github.com/gliderlabs/ssh"
+	//	sw "github.com/sonnt85/gosutils/shellwords"
+	"github.com/sonnt85/gosutils/sutils"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/kr/pty"
+	//	"github.com/creack/pty"
+	"github.com/sonnt85/gosutils/pty"
+
 	//	"github.com/sonnt85/gosutils/simplessh"
 	//	"golang.org/x/crypto/ssh"
-
+	//	"sync"
+	//	"bufio"
 	"bytes"
 	"crypto/rsa"
 	"crypto/x509"
@@ -17,13 +26,14 @@ import (
 	"crypto/rand"
 	"io"
 	"io/ioutil"
-	"log"
+
+	//	"log"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"syscall"
-	"unsafe"
 )
 
 // Server wraps an SSH Client
@@ -34,45 +44,183 @@ type Server struct {
 	User, Password, AddresListen string
 }
 
-var SSHServer *Server
-
-func setWinsizeTerminal(f *os.File, w, h int) {
-	syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCSWINSZ),
-		uintptr(unsafe.Pointer(&struct{ h, w, x, y uint16 }{uint16(h), uint16(w), 0, 0})))
+// exitStatusReq represents an exit status for "exec" requests - RFC 4254 6.10
+type exitStatusReq struct {
+	ExitStatus uint32
 }
 
-//"shell", "exec":
-func sshSessionShellExecHandle(s gossh.Session) {
-	cmd := exec.Command(os.Getenv("SHELL"))
+var SSHServer *Server
 
+//func setWinsizeTerminal(f *os.File, w, h int) {
+//	syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCSWINSZ),
+//		uintptr(unsafe.Pointer(&struct{ h, w, x, y uint16 }{uint16(h), uint16(w), 0, 0})))
+//}
+
+//"shell", "exec":
+
+func sshSessionShellExecHandle(s gossh.Session) {
+	//	 var cmd *exec.Cmd
+	debugEnable := false
+
+	commands := s.Command()
+
+	var cmd *exec.Cmd
+	var err error
 	ptyReq, winCh, isPty := s.Pty()
-	if isPty {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("TERM=%s", ptyReq.Term))
-		f, err := pty.Start(cmd)
+	shellbin := ""
+	shellrunoption := ""
+	//	os.Getenv("SHELL")
+	s.Permissions()
+	if len(shellbin) == 0 {
+		if runtime.GOOS == "windows" {
+			shellrunoption = "/c"
+			if shellbin = os.Getenv("COMSPEC"); shellbin == "" {
+				shellbin = "cmd"
+			}
+		} else { //linux
+			shellrunoption = "-c"
+			shellbin = os.Getenv("SHELL")
+			for _, v := range []string{"bash", "sh"} {
+				if _, err := exec.LookPath(v); err == nil {
+					shellbin = v
+					break
+				}
+			}
+		}
+	}
+	if isPty || (runtime.GOOS == "windows" && (len(commands) == 0)) { //shell
+		var f *os.File
+		log.Printf("\nShell start %s[%s] ...\n", shellbin, ptyReq.Term)
+
+		cmd = exec.Command(shellbin)
+		cmd.Dir = sutils.GetHomeDir()
+		cmd.Env = append(cmd.Env, "TERM="+ptyReq.Term, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
+		f, err := pty.Start(cmd) //start command via pty
 		if err != nil {
-			fmt.Println("Can not start cmd with tpy")
+			log.Errorln("Can not start shell with tpy: ", err)
 			return
 		}
-		go func() {
-			for win := range winCh {
-				setWinsizeTerminal(f, win.Width, win.Height)
-			}
-		}()
-		go func() {
-			io.Copy(f, s) // stdin
-		}()
-		go func() {
-			io.Copy(s, f) // stdout
-		}()
+		//		execClose := func() {
+		//			s.Close()
+		//		}
+		defer f.Close()
+		if debugEnable {
+			go sutils.TeeReadWriterOsFile(f, s.(io.ReadWriter), s.Stderr(), os.Stdout, nil)
+		} else {
+			go sutils.CopyReadWriters(f, s, nil)
+		}
 
-		cmd.Wait()
+		go func() { //auto resize
+			for win := range winCh {
+				//				pty.Setsize(f, win)
+				pty.SetWinsizeTerminal(f, win.Width, win.Height)
+			}
+			//			log.Infoln("Exit setWinsizeTerminal")
+		}()
 
 	} else {
+		if commands[0] == "command" {
+			//			log.Printf("commanraw:[%+v]", s.RawCommand())
+			if runtime.GOOS == "windows" {
+				if commands[1] == "ls" {
+					commands = append([]string{shellbin, shellrunoption}, "dir /b", commands[3])
+				} else if commands[1] == "pwd" {
+					commands = append([]string{shellbin, shellrunoption}, "echo %cd%", commands[3])
+				}
+			} else {
+				commands = append([]string{shellbin, shellrunoption}, s.RawCommand())
+			}
+		}
 
-		io.WriteString(s, "No PTY requested....\n")
-		//		s.Command()
-		s.Exit(1)
+		if commands[0] == "pwd" && runtime.GOOS == "windows" {
+			commands = append([]string{shellbin, shellrunoption}, "echo %cd%", commands[3])
+		}
+
+		log.Infof("\nexec start: %v\n", commands)
+		cmd = exec.Command(commands[0], commands[1:]...)
+		cmd.Env = append(cmd.Env, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
+
+		cmd.Dir = sutils.GetHomeDir()
+
+		if debugEnable {
+			if false { //use pty for any command
+				cmd.Env = append(cmd.Env, "TERM=xterm", sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
+
+				f, err := pty.Start(cmd) //start command via pty
+				if err != nil {
+					log.Errorln("Can not start shell with tpy: ", err)
+					return
+				}
+				defer f.Close()
+
+				go func() { //auto resize
+					for win := range winCh {
+						pty.SetWinsizeTerminal(f, win.Width, win.Height)
+					}
+					log.Infoln("Exit setWinsizeTerminal")
+				}()
+				go sutils.TeeReadWriterOsFile(f, s.(io.ReadWriter), s.Stderr(), os.Stdout, nil)
+			} else {
+				if nil != sutils.TeeReadWriterCmd(cmd, s.(io.ReadWriter), s.Stderr(), os.Stdout, nil) { //alredy gorountine {
+					log.Errorf("Can not start TeeReadWriterCmd: %v\n", err)
+					return
+				}
+				err = cmd.Start() //start command
+			}
+		} else {
+			cmd.Stderr = s.Stderr()
+			cmd.Stdout = s
+			inputWriter, err := cmd.StdinPipe()
+			if err != nil {
+				return
+			}
+			go func() {
+				io.Copy(inputWriter, s)
+				inputWriter.Close()
+			}()
+			err = cmd.Start() //start command
+		}
+
+		if err != nil {
+			log.Errorf("Can not start command: %v\n", err)
+			return
+		}
 	}
+
+	err = cmd.Wait()
+	if isPty {
+		log.Infof("\nDone shell secssion [%s]\n", shellbin)
+
+	} else {
+		log.Infof("\nDone exec command %v -> %v\n", s.Command(), commands)
+	}
+
+	if err != nil {
+		log.Errorf("\nCommand return err: %v\n", err)
+		s.Exit(getExitCode(err))
+	}
+}
+
+func getExitCode(err error) (exitCode int) {
+	defaultFailedCode := 127
+	if err != nil {
+		// try to get the exit code
+		if exitError, ok := err.(*exec.ExitError); ok {
+			ws := exitError.Sys().(syscall.WaitStatus)
+			exitCode = ws.ExitStatus()
+		} else {
+			// This will happen (in OSX) if `name` is not available in $PATH,
+			// in this situation, exit code could not be get, and stderr will be
+			// empty string very likely, so we use the default fail code, and format err
+			// to string and set to stderr
+			log.Printf("\nCould not get exit code for failed program: use default %d\n", defaultFailedCode)
+			exitCode = defaultFailedCode
+			//			if stderr == "" {
+			//				stderr = err.Error()
+			//			}
+		}
+	}
+	return exitCode
 }
 
 func getAuthorizedKeysMap(pupkeys string) map[string]bool {
@@ -104,14 +252,14 @@ func getAuthorizedKeysMap(pupkeys string) map[string]bool {
 func PasswordHandler(c gossh.Context, pass string) bool {
 	if SSHServer.User != "" {
 		if c.User() != SSHServer.User {
-			fmt.Printf("User %s is not match\n", c.User())
+			log.Printf("User %s is not match\n", c.User())
 			return false
 		}
 	}
 
 	if SSHServer.Password != "" {
 		if string(pass) != SSHServer.Password {
-			fmt.Printf("Password %s is not match", pass)
+			log.Printf("Password %s is not match", pass)
 			return false
 		}
 	}
@@ -156,7 +304,7 @@ func CreateKeyPairBytes() (publicKey, privateKey []byte) {
 func NewServer(User, addr, keypass, Pubkeys string) *Server {
 
 	server := &Server{}
-	//	fmt.Printf("===============>server: %+v", server)
+	//	log.Printf("===============>server: %+v", server)
 	//	&Server{AddresListen: addr, User: User, Password: keypass}
 	if addr == "" {
 		addr = ":4444"
@@ -172,8 +320,8 @@ func NewServer(User, addr, keypass, Pubkeys string) *Server {
 	server.PasswordHandler = PasswordHandler
 	//	server.HostSigners = [](gossh.Signer)(gossh.NewSignerFromKey(""))
 	server.ConnCallback = func(ctx gossh.Context, conn net.Conn) net.Conn {
-		fmt.Printf("New ssh connection from %s\n", conn.RemoteAddr().String())
-		//				fmt.Printf("New ssh connection! %v\n", ctx)
+		log.Printf("New ssh connection from %s\n", conn.RemoteAddr().String())
+		//				log.Printf("New ssh connection! %v\n", ctx)
 		return conn
 	}
 	if len(Pubkeys) > 50 {
