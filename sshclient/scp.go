@@ -6,21 +6,24 @@ import (
 	"fmt"
 	"io"
 	"os"
+
 	//	"path"
 	"bufio"
 	"errors"
+
 	//	"time"
 	//	"github.com/laher/sshutils-go/sshconn"
 	//	"github.com/sonnt85/gosutils/regexp"
 
 	//	shellquote "github.com/sonnt85/gosutils/shellwords"
 	"encoding/hex"
-	log "github.com/sirupsen/logrus"
-	"github.com/sonnt85/gosutils/sutils"
-	"golang.org/x/crypto/ssh"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/sonnt85/gosutils/sutils"
+	"golang.org/x/crypto/ssh"
 	//	"strings"
 )
 
@@ -147,7 +150,7 @@ func (scp *SecureCopier) sendFile(procWriter io.Writer, srcPath string, srcFileI
 	return err
 }
 
-//to-scp
+//to-scp [send scp -t ]
 func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 
 	srcFileInfo, err := os.Stat(scp.srcFile)
@@ -227,10 +230,10 @@ func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 
 	remoteOpts := "-t"
 	if scp.IsQuiet {
-		remoteOpts += "q"
+		remoteOpts += "-q"
 	}
 	if scp.IsRecursive {
-		remoteOpts += "r"
+		remoteOpts += "-r"
 	}
 	err = session.Run("scp " + remoteOpts + " " + scp.dstFile)
 	if err != nil {
@@ -240,33 +243,22 @@ func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 	return err
 }
 
-// scp FROM remote source
+// scp FROM remote source[ send scp -f]
 func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
-	dstFileInfo, err := os.Stat(scp.dstFile)
 	dstDir := scp.dstFile
 	var useSpecifiedFilename bool
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		} else {
-			//OK - create file/dir
-			useSpecifiedFilename = true
-		}
-	} else if dstFileInfo.IsDir() {
-		//ok - use name of srcFile
-		//scp.dstFile = filepath.Join(scp.dstFile, filepath.Base(srcFile))
+	var err error
+
+	if strings.HasSuffix(scp.dstFile, string(os.PathSeparator)) {
 		dstDir = scp.dstFile
-		//MUST use received filename instead
-		//TODO should this be from USR?
 		useSpecifiedFilename = false
 	} else {
 		dstDir = filepath.Dir(scp.dstFile)
 		useSpecifiedFilename = true
 	}
+
 	//from-scp
-	if err != nil {
-		return err
-	} else if scp.IsVerbose {
+	if scp.IsVerbose {
 		log.Println("Got session")
 	}
 	//	defer session.Close()
@@ -497,6 +489,8 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 					if cmd == 'C' {
 						//C command - file
 						thisDstFile := filepath.Join(dstDir, filename)
+						tmpDstFile := sutils.TempFileCreateInNewTemDir(filename)
+						defer os.RemoveAll(filepath.Dir(tmpDstFile))
 						if scp.IsVerbose {
 							log.Println("Creating destination file: ", thisDstFile)
 						}
@@ -504,7 +498,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 						pb := sutils.NewProgressBar(filename, size)
 						pb.Update(0)
 
-						fw, err := os.Create(thisDstFile) //TODO: mode here
+						fw, err := os.Create(tmpDstFile) //TODO: mode here
 						//						fw, err := os.OpenFile(thisDstFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(mode))
 						if err != nil {
 							ce <- err
@@ -542,13 +536,22 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 							}
 							lastPercent = percent
 						}
-						//close file writer & check error
 						err = fw.Close()
 						if err != nil {
 							log.Errorln(err.Error())
 							ce <- err
 							return
 						}
+
+						err = os.Rename(tmpDstFile, thisDstFile)
+						if err != nil {
+							log.Errorln(err.Error())
+							ce <- err
+							return
+						}
+						//						sutils.FileCopy(tmpDstFile, thisDstFile)
+						//close file writer & check error
+
 						//get next byte from channel reader
 						nb := make([]byte, 1)
 						_, err = r.Read(nb)
@@ -611,10 +614,10 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 	//qprf
 	remoteOpts := "-f"
 	if scp.IsQuiet {
-		remoteOpts += "q"
+		remoteOpts += "-q"
 	}
 	if scp.IsRecursive {
-		remoteOpts += "r"
+		remoteOpts += "-r"
 	}
 	//TODO should this path (/usr/bin/scp) be configurable?
 	err = session.Run("scp " + remoteOpts + " " + scp.srcFile)

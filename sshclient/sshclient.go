@@ -1,10 +1,13 @@
 package sshclient
 
 import (
+	"time"
+
 	log "github.com/sirupsen/logrus"
 
 	"bufio"
 	"bytes"
+
 	//	"fmt"
 	//	terminaldimensions "github.com/sonnt85/gosutils/terminaldimensions"
 	"golang.org/x/crypto/ssh"
@@ -14,6 +17,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+
 	//	"os/exec"
 	"path/filepath"
 	//	"regexp"
@@ -33,16 +37,16 @@ type Client struct {
 	Addr   string
 }
 
-func CopyReadWriters(a, b io.ReadWriter, close func()) {
+func CopyReadWriters(a, b io.ReadWriter, closeFunc func()) {
 	var once sync.Once
 	go func() {
 		io.Copy(a, b)
-		once.Do(close)
+		once.Do(closeFunc)
 	}()
 
 	go func() {
 		io.Copy(b, a)
-		once.Do(close)
+		once.Do(closeFunc)
 	}()
 }
 
@@ -104,7 +108,7 @@ func GetHostKey(host string) ssh.PublicKey {
 }
 
 // NewClient returns a new SSH Client. , c ssh.Conn, chans <-chan ssh.NewChannel, reqs <-chan *ssh.Request
-func NewClient(user, addr, keypass string) *Client {
+func NewClient(user, addr, keypass string, timeouts ...time.Duration) *Client {
 	auMethod, err := ClientAuthMethod(keypass)
 	if err != nil {
 		log.Println(fmt.Sprintf("Cannot parse keypass: %s", keypass))
@@ -116,6 +120,9 @@ func NewClient(user, addr, keypass string) *Client {
 			auMethod,
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+	if len(timeouts) != 0 {
+		config.Timeout = timeouts[0]
 	}
 	//	client := ssh.NewClient(c, chans, reqs)
 
@@ -138,6 +145,15 @@ func (c *Client) Dial() error {
 		}()
 	}
 	return err
+}
+
+func (c *Client) DialTCPRemote(raddrstr string) (net.Conn, error) {
+	raddr, err := net.ResolveTCPAddr("tcp4", raddrstr)
+	if err != nil {
+		log.Error(err.Error())
+		return nil, err
+	}
+	return c.DialTCP("tcp4", nil, raddr)
 }
 
 func (c *Client) Run(cmd string) (stdout, stderr []byte, err error) {
@@ -400,7 +416,7 @@ func (c *Client) RemoteForward(retport chan int, remote, local string) error {
 	}
 	ln, err := c.Listen("tcp", remote)
 	if err != nil {
-		println(err.Error())
+		log.Println(err.Error())
 		return err
 	}
 
@@ -424,6 +440,7 @@ func (c *Client) RemoteForward(retport chan int, remote, local string) error {
 				return
 			default:
 				conn, err := ln.Accept()
+				//				conn.SetDeadline(t)
 				if err != nil { // Unable to accept new connection - listener likely closed
 					continue
 				}

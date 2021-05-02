@@ -2,82 +2,70 @@ package gogrep
 
 import (
 	"bufio"
-	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
 )
 
-func grepFile(file string, pat []byte) (retarray []string, err error) {
+func GrepFileLine(file, pat string, numberlineMatch int, literalFlags ...bool) (retarray []string, err error) {
 	//	var retarray []string
+	if len(literalFlags) != 0 && literalFlags[0] {
+		pat = regexp.QuoteMeta(pat)
+	}
+
 	f, err := os.Open(file)
 	if err != nil {
 		return retarray, err
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
+	nmatch := 0
+	r, err := regexp.Compile(pat)
+	if err != nil {
+		return retarray, err
+	}
+
 	for scanner.Scan() {
-		r, err := regexp.Compile(string(pat))
-		if err != nil {
-			return retarray, err
-		}
-		if datas := r.FindAllString(string(scanner.Bytes()), -1); datas != nil {
+		datas := r.FindAllString(string(scanner.Bytes()), -1)
+		if len(datas) != 0 {
+			nmatch++
 			retarray = append(retarray, datas...)
+			if numberlineMatch != -1 {
+				if nmatch == numberlineMatch {
+					break
+				}
+			}
 			//		matched, _ := regexp.Match(, scanner.Bytes())
 		}
 	}
 	return retarray, err
 }
 
-func GrepString(data string, pat []byte) (retarray []string, err error) {
-	scanner := bufio.NewScanner(strings.NewReader(data))
-	for scanner.Scan() {
-		r, err := regexp.Compile(string(pat))
-		if err != nil {
-			return retarray, err
-		}
-		if datas := r.FindAllString(string(scanner.Bytes()), -1); datas != nil {
-			retarray = append(retarray, datas...)
-			//		matched, _ := regexp.Match(, scanner.Bytes())
-		}
-	}
-	return retarray, err
-}
+func GrepFileLines(file, pat string, numberlineMatch int, literalFlags ...bool) (retarray []string, err error) {
 
-func GrepMutipleLines(data string, pat []byte) (retarray []string, err error) {
-	allbytes, err := ioutil.ReadFile(data)
+	if len(literalFlags) != 0 && literalFlags[0] {
+		pat = regexp.QuoteMeta(pat)
+	}
+
+	allbytes, err := ioutil.ReadFile(file)
 	if err != nil {
 		return retarray, err
 	}
 
-	r, err := regexp.Compile(string(pat))
+	r, err := regexp.Compile(pat)
 	if err != nil {
 		return retarray, err
 	}
 
-	retarray = r.FindAllString(string(allbytes), -1)
+	retarray = r.FindAllString(string(allbytes), numberlineMatch)
 
 	return retarray, err
 }
 
-func grepFFile(file string, pat []byte) bool {
-	f, err := os.Open(file)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		if bytes.Contains(scanner.Bytes(), pat) {
-			return true
-		}
-	}
-	return false
-}
-
-func GrepMatch(filepath, pattern string) bool {
-	ret, err := grepFile(filepath, []byte(pattern))
+func FileIsMatchLine(filepath, pattern string, literalFlags ...bool) bool {
+	ret, err := GrepFileLine(filepath, pattern, 1, literalFlags...)
 	if len(ret) != 0 && err == nil {
 		return true
 	} else {
@@ -85,6 +73,88 @@ func GrepMatch(filepath, pattern string) bool {
 	}
 }
 
-func GrepF(filepath, pattern string) bool {
-	return grepFFile(filepath, []byte(pattern))
+func FileIsMatchLines(filepath, pattern string, literalFlags ...bool) bool {
+	ret, err := GrepFileLines(filepath, pattern, 1, literalFlags...)
+	if len(ret) != 0 && err == nil {
+		return true
+	} else {
+		return false
+	}
+}
+
+func FileIsMatchLiteralLine(filepath, pattern string) bool {
+	ret, err := GrepFileLine(filepath, pattern, 1, true)
+	if len(ret) != 0 && err == nil {
+		return true
+	} else {
+		return false
+	}
+}
+
+func FileIsMatchLiteralLines(filepath, pattern string) bool {
+	ret, err := GrepFileLines(filepath, pattern, 1, true)
+	if len(ret) != 0 && err == nil {
+		return true
+	} else {
+		return false
+	}
+}
+
+func GrepStringLine(str, pat string, numberlineMatch int, literalFlags ...bool) (retarray []string, err error) {
+	//func GrepStringLine(data string, pat []byte, nlines ...int) (retarray []string, err error) {
+	scanner := bufio.NewScanner(strings.NewReader(str))
+
+	if len(literalFlags) != 0 && literalFlags[0] {
+		pat = regexp.QuoteMeta(pat)
+	}
+	r, err := regexp.Compile(string(pat))
+	if err != nil {
+		return retarray, err
+	}
+
+	nmatch := 0
+	for scanner.Scan() {
+		if datas := r.FindAllString(string(scanner.Bytes()), -1); datas != nil {
+			nmatch++
+			retarray = append(retarray, datas...)
+			if numberlineMatch != -1 {
+				if nmatch == numberlineMatch {
+					break
+				}
+			}
+			//		matched, _ := regexp.Match(, scanner.Bytes())
+		}
+	}
+	return retarray, err
+}
+
+func GrepStringLines(str, pat string, numberlineMatch int, literalFlags ...bool) (retarray []string, err error) {
+	if len(literalFlags) != 0 && literalFlags[0] {
+		pat = regexp.QuoteMeta(pat)
+	}
+	r, err := regexp.Compile(string(pat))
+	if err != nil {
+		return retarray, err
+	}
+
+	retarray = r.FindAllString(str, numberlineMatch)
+	if len(retarray) != 0 {
+		return retarray, nil
+	} else {
+		return retarray, fmt.Errorf("Can not grep pattern")
+	}
+}
+
+func StringIsMatchLine(str, pat string, literalFlags ...bool) bool {
+	if ret, err := GrepStringLine(str, pat, 1, literalFlags...); err == nil && len(ret) != 0 {
+		return true
+	}
+	return false
+}
+
+func StringIsMatchLines(str, pat string, literalFlags ...bool) bool {
+	if ret, err := GrepStringLines(str, pat, 1, literalFlags...); err == nil && len(ret) != 0 {
+		return true
+	}
+	return false
 }

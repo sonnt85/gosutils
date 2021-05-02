@@ -7,10 +7,11 @@ package main
 
 import (
 	"flag"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"os"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/sonnt85/gosutils/ethernet"
 	"github.com/sonnt85/gosutils/raw"

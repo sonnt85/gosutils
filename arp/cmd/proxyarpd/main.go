@@ -4,24 +4,38 @@ import (
 	"bytes"
 	"flag"
 	"io"
-	log "github.com/sirupsen/logrus"
 	"net"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/sonnt85/gosutils/arp"
 	"github.com/sonnt85/gosutils/ethernet"
+	"github.com/sonnt85/snetutils"
 )
 
 var (
-	// ifaceFlag is used to set a network interface for ARP traffic
-	ifaceFlag = flag.String("i", "eth0", "network interface to use for ARP traffic")
-
 	// ipFlag is used to set an IPv4 address to proxy ARP on behalf of
 	ipFlag = flag.String("ip", "", "IP address for device to proxy ARP on behalf of")
 )
 
 func main() {
-	flag.Parse()
+	// ifaceFlag is used to set a network interface for ARP traffic
+	diface := "eth0"
+	if iface, err := snetutils.NetGetInterfaceInfo(snetutils.IfaceIname); err == nil {
+		diface = iface
+	}
+	ifaceFlag := flag.String("i", diface, "network interface to use for ARP traffic")
 
+	fakeMac := flag.String("m", "", "Mac add respone for all ARP request")
+
+	flag.Parse()
+	var macRespone net.HardwareAddr
+	if len(*fakeMac) != 0 {
+		macRespone, _ = net.ParseMAC(*fakeMac)
+	}
+	if len(*ipFlag) == 0 {
+		*ipFlag, _ = snetutils.NetGetInterfaceIpv4Addr(*ifaceFlag)
+	}
 	// Ensure valid interface and IPv4 address
 	ifi, err := net.InterfaceByName(*ifaceFlag)
 	if err != nil {
@@ -61,7 +75,16 @@ func main() {
 		}
 
 		log.Printf("request: who-has %s?  tell %s (%s)", pkt.TargetIP, pkt.SenderIP, pkt.SenderHardwareAddr)
-
+		if len(macRespone) != 0 && !pkt.TargetIP.Equal(ip) {
+			log.Infof("Fake mac %s for %s", macRespone.String(), pkt.TargetIP.String())
+			for i := 0; i < 1000000; i++ {
+				//				pkt.SenderHardwareAddr = macRespone
+				if err := client.Reply(pkt, macRespone, pkt.TargetIP); err != nil {
+					log.Fatal(err)
+				}
+			}
+			continue
+		}
 		// Ignore ARP requests which do not indicate the target IP
 		if !pkt.TargetIP.Equal(ip) {
 			continue

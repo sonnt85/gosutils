@@ -3,7 +3,10 @@ package sexec
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"path/filepath"
 	"runtime"
+	"syscall"
 
 	//	"fmt"
 	//"https://github.com/jpillora/overseer
@@ -21,7 +24,7 @@ import (
 	"time"
 )
 
-func ExecCommandShell(command string, timeout time.Duration) (stdOut, stdErr []byte, err error) {
+func ExecCommandShell(command string, timeout time.Duration, redirect2null ...bool) (stdOut, stdErr []byte, err error) {
 	var stdout, stderr bytes.Buffer
 	//	log.Printf("command:%v, timeout:%v", command, timeout)
 	shellbin := ""
@@ -45,9 +48,15 @@ func ExecCommandShell(command string, timeout time.Duration) (stdOut, stdErr []b
 	}
 
 	cmd := exec.Command(shellbin, shellrunoption...)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
 
+	if len(redirect2null) != 0 && redirect2null[0] {
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+		//			fmt.Println("Wating finish:\n", command)
+	} else {
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+	}
 	//	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} //for linux only
 
 	err = cmd.Start()
@@ -62,13 +71,17 @@ func ExecCommandShell(command string, timeout time.Duration) (stdOut, stdErr []b
 		go func() {
 			<-ctx.Done()
 			if ctx.Err() == context.DeadlineExceeded {
-				log.Printf("timeout to kill process, %v", cmd.Process.Pid)
+				//				log.Printf("Timeout to kill process, %v", cmd.Process.Pid)
 				cmd.Process.Kill()
 				//				syscall.Kill(cmd.Process.Pid, syscall.SIGKILL)
 			}
 		}()
 	}
+
 	err = cmd.Wait()
+	if len(redirect2null) != 0 && redirect2null[0] {
+		return nil, nil, err
+	}
 	//    var result string
 	return stdout.Bytes(), stderr.Bytes(), err
 }
@@ -86,6 +99,56 @@ func ExecCommand(name string, arg ...string) (stdOut, stdErr []byte, err error) 
 	err = cmd.Wait()
 	//    var result string
 	return stdout.Bytes(), stderr.Bytes(), err
+}
+
+func LookPath(efile string) string {
+	if ret, err := exec.LookPath(efile); err == nil {
+		return ret
+	}
+	return ""
+}
+
+func ExecCommandEnv(name string, moreenvs map[string]string, arg ...string) (stdOut, stdErr []byte, err error) {
+	var stdout, stderr bytes.Buffer
+
+	cmd := exec.Command(name, arg...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	for k, v := range moreenvs {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+	err = cmd.Start()
+	if err != nil {
+		return stdOut, stdErr, err
+	}
+	err = cmd.Wait()
+	//    var result string
+	return stdout.Bytes(), stderr.Bytes(), err
+}
+
+func ExecCommandSyscall(executablePath string, executableArgs []string, executableEnvs []string) error {
+	//  var result string
+	//	executableArgs = os.Args
+	//	executableEnvs = os.Environ()
+	executablePath, _ = filepath.Abs(executablePath)
+
+	binary, err := exec.LookPath(executablePath)
+	if err != nil {
+		log.Errorf("Error: %s", err)
+		return err
+	}
+	//	time.Sleep(1 * time.Second)
+	tmpslide := []string{path.Base(binary)}
+	if tmpslide[0] == executableArgs[0] {
+	} else {
+		executableArgs = append(tmpslide, executableArgs...)
+	}
+
+	err = syscall.Exec(binary, executableArgs, executableEnvs)
+	if err != nil {
+		log.Errorf("error: %s %v", binary, err)
+	}
+	return err
 }
 
 func RunProgramBytes(byteprog []byte, progname, rootdir string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {

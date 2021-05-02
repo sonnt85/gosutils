@@ -18,13 +18,16 @@ package main
 import (
 	"fmt"
 
+	"github.com/IBM/netaddr"
 	"github.com/sonnt85/gosutils/arp"
+	"github.com/sonnt85/snetutils"
+
 	//	"github.com/sonnt85/gosutils/sutils"
-	"github.com/spf13/cobra"
 	"net"
 	"os"
-	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -52,58 +55,11 @@ func initConfig() {
 	return
 }
 
-func GetOutboundIP() string {
-	conn, err := net.DialTimeout("udp", "1.1.1.1:80", time.Second)
-	if err != nil {
-		log.Println(err)
-		return ""
-	} else {
-		defer conn.Close()
-	}
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-
-	return localAddr.IP.String()
-}
-
-func NetGetMacCIDR() (string, error) {
-	ret := NetGetDefaultInterface(1)
-	if ret != "" {
-		return ret, nil
-	} else {
-		return "", nil
-	}
-}
-
-//infotype 0 interface name, 1 macaddr, 2 cird, >2 lanip]
-func NetGetDefaultInterface(infotype int) (info string) {
-	// get all the system's or local machine's network interfaces
-	LanIP := GetOutboundIP()
-	interfaces, _ := net.Interfaces()
-	for _, interf := range interfaces {
-
-		if addrs, err := interf.Addrs(); err == nil {
-			for _, addr := range addrs {
-				if strings.Contains(addr.String(), LanIP) {
-					if infotype == 0 {
-						return interf.Name
-					} else if infotype == 1 {
-						return interf.HardwareAddr.String()
-					} else if infotype == 2 {
-						return addr.String()
-					} else {
-						return LanIP
-					}
-				}
-			}
-		}
-	}
-	return ""
-}
-
 func init() {
+	diface, _ := snetutils.NetGetInterfaceInfo(snetutils.IfaceIname)
 	cobra.OnInitialize(initConfig)
 	arpCmd.Flags().DurationVarP(&durFlag, "duration", "d", 500*time.Millisecond, "timeout for ARP request")
-	arpCmd.Flags().StringVarP(&ifaceFlag, "interface", "I", NetGetDefaultInterface(0), "network interface to use for ARP request")
+	arpCmd.Flags().StringVarP(&ifaceFlag, "interface", "I", diface, "network interface to use for ARP request")
 	arpCmd.Flags().StringVarP(&ipFlag, "ip", "i", "", "IPv4 address destination for ARP request")
 }
 
@@ -122,25 +78,47 @@ func scan() (err error) {
 	}
 	defer c.Close()
 
-	// Set request deadline from flag
-	if err := c.SetDeadline(time.Now().Add(durFlag)); err != nil {
-		return err
-	}
+	ipset := new(netaddr.IPSet)
 
-	// Request hardware address for IP address
-	ip := net.ParseIP(ipFlag).To4()
-	mac, err := c.Resolve(ip)
-	if err != nil {
-		return err
-	}
+	if len(ipFlag) != 0 {
+		netaddr.ParseIP(ipFlag)
+		ipset.Insert(netaddr.ParseIP(ipFlag))
+	} else {
+		if ipnet, err := snetutils.NetGetCIDR(ifaceFlag); err == nil {
+			fmt.Println(ipnet)
 
-	log.Printf("%s -> %s", ip, mac)
+			if ipNet, err := netaddr.ParseCIDRToNet(ipnet); err == nil {
+				ipset.InsertNet(ipNet)
+			}
+		}
+	}
+	cnt := 0
+	cntF := 0
+	fmt.Println("Arp on interface ", ifaceFlag)
+	for _, ip := range ipset.GetIPs(65536) {
+		// Request hardware address for IP address
+		cnt++
+		// Set request deadline from flag
+		if err := c.SetDeadline(time.Now().Add(durFlag)); err != nil {
+			continue
+		}
+		mac, err := c.Resolve(ip)
+		if err != nil {
+			cntF++
+			//			fmt.Println(ip.String(), err)
+			continue
+		}
+		fmt.Printf("%s -> %s\n", ip, mac)
+
+	}
+	fmt.Printf("False/Total %d/%d\n", cntF, cnt)
+
 	return nil
 }
 
 func main() {
 	if err := arpCmd.Execute(); err != nil {
-		log.Println(err)
+		fmt.Println(err)
 		os.Exit(1)
 	}
 }

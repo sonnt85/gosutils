@@ -119,7 +119,6 @@ func (c *Client) Resolve(ip net.IP) (net.HardwareAddr, error) {
 		if arp.Operation != OperationReply || !arp.SenderIP.Equal(ip) {
 			continue
 		}
-
 		return arp.SenderHardwareAddr, nil
 	}
 }

@@ -13,7 +13,11 @@ import (
 	"github.com/sonnt85/gosutils/daemon"
 )
 
-func RebornNewProgram(port int, newname string) bool {
+func RebornNewProgram(port int, newname string, cloneflags ...bool) bool {
+	cloneflag := true
+	if len(cloneflags) != 0 {
+		cloneflag = cloneflags[0]
+	}
 	var cntxt = &daemon.Context{
 		//	PidFileName: "/tmp/sample.pid",
 		PidFilePerm: 0644,
@@ -22,6 +26,7 @@ func RebornNewProgram(port int, newname string) bool {
 		WorkDir:     "",
 		Umask:       027,
 		NameProg:    newname,
+		CloneFlag:   cloneflag,
 		//	Args:        []string{"[go-daemon sample]"},
 	}
 

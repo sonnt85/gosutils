@@ -1,6 +1,6 @@
 package runonce
 
-func RebornNewProgram(port int, newname string) bool { //fake
+func RebornNewProgram(port int, newname string, cloneflags ...bool) bool {
 	return false
 }
 

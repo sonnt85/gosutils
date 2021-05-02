@@ -9,8 +9,10 @@ var errNotSupported = errors.New("daemon: Non-POSIX OS is not supported")
 
 // Mark of daemon process - system environment variable _GO_DAEMON=1
 const (
-	MARK_NAME  = "_GO_DAEMON"
-	MARK_VALUE = "1"
+	MARK_NAME         = "_DAEMON"
+	MARK_VALUE        = "1"
+	ASBPATHORG_NAME   = "_ASBPATHORG"
+	ASBPATHCLONE_NAME = "_ASBPATHCLONE"
 )
 
 // Default file permissions for log and pid files.
@@ -19,6 +21,14 @@ const FILE_PERM = os.FileMode(0640)
 // WasReborn returns true in child process (daemon) and false in parent process.
 func WasReborn() bool {
 	return os.Getenv(MARK_NAME) == MARK_VALUE
+}
+
+func GetOrgExecPath() string {
+	return os.Getenv(ASBPATHORG_NAME)
+}
+
+func GetCloneExecPath() string {
+	return os.Getenv(ASBPATHCLONE_NAME)
 }
 
 // Reborn runs second copy of current process in the given context.

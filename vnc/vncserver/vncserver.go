@@ -22,16 +22,19 @@ package main
 
 import (
 	"flag"
-	"github.com/kbinani/screenshot"
 	"image"
 	"image/png"
+	"strconv"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/kbinani/screenshot"
+
 	"math"
 	"net"
 	"os"
 	"runtime/pprof"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/sonnt85/gosutils/vnc/vncserver/rfb"
 )
@@ -107,6 +110,8 @@ func handleConn(c *rfb.Conn) {
 	li := &rfb.LockableImage{Img: im}
 
 	closec := make(chan bool)
+	//	n := screenshot.NumActiveDisplays()
+
 	go func() {
 		slide := 0
 		tick := time.NewTicker(time.Second / 30)
@@ -126,7 +131,7 @@ func handleConn(c *rfb.Conn) {
 			case <-tick.C:
 				slide++
 				li.Lock()
-				drawImage(im, slide)
+				drawSineImage(im, slide)
 				li.Unlock()
 				haveNewFrame = true
 			}
@@ -142,18 +147,21 @@ func handleConn(c *rfb.Conn) {
 
 func drawImage(im *image.RGBA, anim int) {
 	var err error
-
 	n := screenshot.NumActiveDisplays()
-
+	//	fmt.Println(n)
 	if n != 0 {
 		im, err = screenshot.CaptureDisplay(0)
+		save(im, "screen"+strconv.Itoa(anim)+".png")
+
 		if err != nil {
 			println("Error capture screen")
-			panic(err)
+			//			panic(err)
 		}
 	}
 	return
+}
 
+func drawSineImage(im *image.RGBA, anim int) {
 	pos := 0
 	const border = 50
 	for y := 0; y < height; y++ {
@@ -177,4 +185,5 @@ func drawImage(im *image.RGBA, anim int) {
 			pos += 4 // skipping alpha
 		}
 	}
+	//	save(im, "screen"+strconv.Itoa(anim)+".png")
 }

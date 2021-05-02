@@ -4,11 +4,14 @@ import (
 	//	"fmt"
 	//	"encoding/hex"
 
+	"time"
+
 	log "github.com/sirupsen/logrus"
 
 	gossh "github.com/gliderlabs/ssh"
 	//	sw "github.com/sonnt85/gosutils/shellwords"
 	"github.com/sonnt85/gosutils/sutils"
+	"github.com/sonnt85/gosystem"
 	"golang.org/x/crypto/ssh"
 
 	//	"github.com/creack/pty"
@@ -67,28 +70,40 @@ func sshSessionShellExecHandle(s gossh.Session) {
 	var cmd *exec.Cmd
 	var err error
 	ptyReq, winCh, isPty := s.Pty()
+	//	defer close(winCh)
 	shellbin := ""
 	shellrunoption := ""
 	//	os.Getenv("SHELL")
-	s.Permissions()
-	if len(shellbin) == 0 {
-		if runtime.GOOS == "windows" {
-			shellrunoption = "/c"
-			if shellbin = os.Getenv("COMSPEC"); shellbin == "" {
-				shellbin = "cmd"
-			}
-		} else { //linux
-			shellrunoption = "-c"
-			shellbin = os.Getenv("SHELL")
-			for _, v := range []string{"bash", "sh"} {
-				if _, err := exec.LookPath(v); err == nil {
-					shellbin = v
-					break
+	log.Warn("permistion", s.Permissions())
+	//	if len(shellbin) == 0 {
+	if runtime.GOOS == "windows" {
+		shellrunoption = "/c"
+		shellbin = os.Getenv("COMSPEC")
+
+		for k, v := range map[string]string{"cmd": "/c", "powershell": "-c"} {
+			if _, err := exec.LookPath(k); err == nil {
+				shellbin = v
+				shellrunoption = v
+				if len(commands) == 0 {
+					commands = []string{shellbin}
 				}
+				break
+			}
+		}
+
+	} else { //linux
+		shellrunoption = "-c"
+		shellbin = os.Getenv("SHELL")
+		for _, v := range []string{"bash", "sh"} {
+			if _, err := exec.LookPath(v); err == nil {
+				shellbin = v
+				break
 			}
 		}
 	}
-	if isPty || (runtime.GOOS == "windows" && (len(commands) == 0)) { //shell
+	//	}
+
+	if isPty { //shell
 		var f *os.File
 		log.Printf("\nShell start %s[%s] ...\n", shellbin, ptyReq.Term)
 
@@ -96,6 +111,8 @@ func sshSessionShellExecHandle(s gossh.Session) {
 		cmd.Dir = sutils.GetHomeDir()
 		cmd.Env = append(cmd.Env, "TERM="+ptyReq.Term, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
 		f, err := pty.Start(cmd) //start command via pty
+		//		term.NewTerminal(c, prompt)
+		//		term := terminal.NewTerminal("", s"")
 		if err != nil {
 			log.Errorln("Can not start shell with tpy: ", err)
 			return
@@ -115,7 +132,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				//				pty.Setsize(f, win)
 				pty.SetWinsizeTerminal(f, win.Width, win.Height)
 			}
-			//			log.Infoln("Exit setWinsizeTerminal")
+			log.Infoln("Exit setWinsizeTerminal")
 		}()
 
 	} else {
@@ -134,6 +151,63 @@ func sshSessionShellExecHandle(s gossh.Session) {
 
 		if commands[0] == "pwd" && runtime.GOOS == "windows" {
 			commands = append([]string{shellbin, shellrunoption}, "echo %cd%", commands[3])
+		}
+
+		if commands[0] == "ls" && runtime.GOOS == "windows" {
+			commands = append([]string{shellbin, shellrunoption}, "dir /b", commands[3])
+		}
+
+		if commands[0] == "scmd" {
+			if len(commands) > 1 {
+				log.Info("Run scommand \n", commands)
+				switch commands[1] {
+				case "reboot":
+					gosystem.Reboot(time.Second * 3)
+				case "apprestart":
+				case "upgrade":
+				case "quit":
+					os.Exit(0)
+				}
+			}
+			return
+		}
+
+		if commands[0] == "scp" {
+			if _, err := exec.LookPath(commands[0]); err != nil { //not found scp
+				defer log.Warn("Exit scp server")
+				log.Warn("Starting scp server ...", commands)
+				scp := new(SecureCopier)
+				if sutils.SlideHasElem(commands, "-r") {
+					scp.IsRecursive = true
+				} else {
+					scp.IsRecursive = false
+				}
+
+				if sutils.SlideHasElem(commands, "-q") {
+					scp.IsQuiet = true
+				} else {
+					scp.IsQuiet = false
+				}
+				scp.IsVerbose = !scp.IsQuiet
+				scp.ignErr = false
+				scp.inPipe = s.(io.WriteCloser)
+				scp.outPipe = s.(io.ReadCloser)
+				if sutils.SlideHasElem(commands, "-t") {
+					scp.dstFile = commands[len(commands)-1]
+					if err := scpFromClient(scp); err != nil {
+						log.Error("Error scpFromClient", err)
+					}
+					return
+				}
+				if sutils.SlideHasElem(commands, "-f") {
+					scp.srcFile = commands[len(commands)-1]
+					if err := scpToClient(scp); err != nil {
+
+					}
+					return
+				}
+				return
+			}
 		}
 
 		log.Infof("\nexec start: %v\n", commands)
@@ -301,9 +375,44 @@ func CreateKeyPairBytes() (publicKey, privateKey []byte) {
 	return publicKey, privateKey
 }
 
-func NewServer(User, addr, keypass, Pubkeys string) *Server {
+func DefaultChannelHandlers(srv *gossh.Server, conn *ssh.ServerConn, newChan ssh.NewChannel, ctx gossh.Context) {
+	log.Info("Default channel handlers ")
 
+	//	_, _, err := newChan.Accept()
+	//	if err != nil {
+	// TODO: trigger event callback
+	//		return
+	//	}
+	//	sess := &gossh.session{
+	//		Channel: ch,
+	//	}
+
+	//	sess.handleRequests(reqs)
+	return
+}
+
+func DefaultRequestHandlers(ctx gossh.Context, srv *gossh.Server, req *ssh.Request) (bool, []byte) {
+	log.Info("Default request handlers ", req.Type)
+
+	if req.Type == "keepalive@openssh.com" {
+		log.Info("Client send keepalive@openssh.com")
+		return true, nil
+	}
+	return false, []byte{}
+}
+
+func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *Server {
+	timeout := time.Second * 60
 	server := &Server{}
+	if len(timeouts) != 0 {
+		timeout = timeouts[0]
+	}
+	server.MaxTimeout = timeout
+	if len(timeouts) >= 2 {
+		server.IdleTimeout = timeouts[1]
+	} else {
+		server.IdleTimeout = timeout >> 1
+	}
 	//	log.Printf("===============>server: %+v", server)
 	//	&Server{AddresListen: addr, User: User, Password: keypass}
 	if addr == "" {
@@ -327,7 +436,6 @@ func NewServer(User, addr, keypass, Pubkeys string) *Server {
 	if len(Pubkeys) > 50 {
 		server.PublicKeyHandler = publicKeyHandler
 	}
-	forwardHandler := &gossh.ForwardedTCPHandler{}
 
 	server.LocalPortForwardingCallback = gossh.LocalPortForwardingCallback(func(ctx gossh.Context, dhost string, dport uint32) bool {
 		log.Println("[ssh -L] Accepted forward", dhost, dport)
@@ -339,13 +447,17 @@ func NewServer(User, addr, keypass, Pubkeys string) *Server {
 		return true
 	})
 	server.ChannelHandlers = map[string]gossh.ChannelHandler{
-		"session":      gossh.DefaultSessionHandler,
-		"direct-tcpip": gossh.DirectTCPIPHandler, //-L
+		"default":                  DefaultChannelHandlers,
+		"session":                  gossh.DefaultSessionHandler,
+		gossh.DirectForwardRequest: gossh.DirectTCPIPHandler, //-L
 		//		"subsystem":    gossh.SftpHandler,
 	}
+
+	forwardHandler := &gossh.ForwardedTCPHandler{}
 	server.RequestHandlers = map[string]gossh.RequestHandler{
-		"tcpip-forward":        forwardHandler.HandleSSHRequest, //-R
-		"cancel-tcpip-forward": forwardHandler.HandleSSHRequest,
+		"default":                        DefaultRequestHandlers,
+		gossh.RemoteForwardRequest:       forwardHandler.HandleSSHRequest, //-R
+		gossh.CancelRemoteForwardRequest: forwardHandler.HandleSSHRequest,
 	}
 	SSHServer = server
 	return SSHServer

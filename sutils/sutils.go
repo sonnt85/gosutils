@@ -1,15 +1,31 @@
 package sutils
 
 import (
-	log "github.com/sirupsen/logrus"
+	mrand "math/rand"
+	"runtime"
+	"sort"
 
+	"github.com/antchfx/jsonquery"
+	"github.com/antchfx/xmlquery"
+	"github.com/beevik/etree"
+
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/md5"
+
+	"crypto/rand"
 	"crypto/sha1"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 
-	//	log "github.com/sirupsen/logrus"
+	xj "github.com/basgys/goxml2json"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/sonnt85/gosutils/slog"
+
 	"net"
 	"net/http"
 	"net/smtp"
@@ -28,6 +44,7 @@ import (
 	//	"errors"
 	"errors"
 	"os/exec"
+	"os/user"
 	"path"
 	"reflect"
 
@@ -45,8 +62,7 @@ import (
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/rs/xid"
 	"github.com/sonnt85/gosutils/gogrep"
-
-	regexputil "github.com/sonnt85/gosutils/regexp"
+	"github.com/sonnt85/gosutils/sregexp"
 
 	//	. "github.com/sonnt85/gosutils/gogrep"
 	"github.com/sonnt85/gosutils/gosed"
@@ -70,20 +86,177 @@ import (
 //		fmt.Println(err)
 //	}
 //}
-func FileAddOrUpdate(pathfile, contents, grepstring, sedexpress string) (err error) {
+var (
+	GOOS       = runtime.GOARCH
+	AppName    string
+	AppVersion string
+	NEWLINE    = "\n"
+	Ipv4Regex  = `([0-9]+\.){3}[0-9]+`
+	__idname   = ".appid"
+	__iddes    = ".appdes"
+	__idDirs   = []string{"/mnt/hostvolume/", "/var/tmp", os.TempDir()}
+)
+
+// removeFile removes the specified file. Errors are ignored.
+func FileremoveFile(path string) error {
+	return os.Remove(path)
+}
+
+func FileCloneDate(dst, src string) bool {
+	var err error
+	var srcinfo os.FileInfo
+	if srcinfo, err = os.Stat(src); err == nil {
+		if err = os.Chtimes(dst, srcinfo.ModTime(), srcinfo.ModTime()); err == nil {
+			return true
+		}
+	}
+	//	fmt.Errorf("Cannot clone date file ", err)
+	return false
+}
+
+func FileCloneDateBaseBin(dst string, binnames ...string) bool {
+	//	var err error
+	if len(binnames) == 0 {
+		binnames = []string{"echo", "ifconfig", "ip", "cp", "ipconfig", "where"}
+	}
+	if FileIWriteable(dst) {
+		for _, binname := range binnames {
+			if p, err := exec.LookPath(binname); err == nil {
+				if FileCloneDate(dst, p) {
+					return true
+				}
+			} else {
+				if PathIsExist(binname) {
+					if FileCloneDate(dst, binname) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	//	log.Errorf("Can not update time for file %s base on ", binnames)
+	return false
+}
+
+func FileAllChild(directory string) (err error) {
+	dirRead, _ := os.Open(directory)
+	dirFiles, _ := dirRead.Readdir(0)
+	for index := range dirFiles {
+		fileHere := dirFiles[index]
+
+		// Get name of file and its full path.
+		nameHere := fileHere.Name()
+		fullPath := directory + nameHere
+
+		// Remove the file.
+		os.Remove(fullPath)
+		fmt.Println("Removed file:", fullPath)
+	}
+	return nil
+}
+
+func FileHashMd5(filePath string) (string, error) {
+	var returnMD5String string
+	file, err := os.Open(filePath)
+	if err != nil {
+		return returnMD5String, err
+	}
+	defer file.Close()
+	hash := md5.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return returnMD5String, err
+	}
+	hashInBytes := hash.Sum(nil)[:16]
+	returnMD5String = hex.EncodeToString(hashInBytes)
+	return returnMD5String, nil
+}
+
+// waitForFile waits for the specified file to exist before returning. If the an
+// error, other than the file not existing, occurs, the error is returned. If,
+// after 100 attempts, the file does not exist, an error is returned.
+func FileWaitForFileExist(path string, timeoutms int) error {
+	if timeoutms < 50 && timeoutms != 0 {
+		timeoutms = 50
+	}
+
+	for i := 0; i < timeoutms/50; i++ {
+		_, err := os.Stat(path)
+		if err == nil || !os.IsNotExist(err) {
+			return err
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return fmt.Errorf("file does not exist: %s", path)
+}
+
+// readFile waits for the specified file to contain contents, and then returns
+// those contents as a string. If an error occurs while reading the file, the
+// error is returned. If the file has no content after 100 attempts, an error is
+// returned.
+func FileWaitContentsAndRead(path string, timeoutms int) (string, error) {
+	if timeoutms < 50 && timeoutms != 0 {
+		timeoutms = 50
+	}
+	for i := 0; i < timeoutms/50; i++ {
+		bytes, err := ioutil.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		if len(bytes) > 0 {
+			return strings.TrimSpace(string(bytes)), err
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return "", fmt.Errorf("file is empty: %s", path)
+}
+
+//pathfile, tocontents, grepstring, pattern string, literalGrepFlag bool, linesinserts ...int
+func FileUpdateOrAdd(pathfile, tocontents, grepstring, pattern string, literalGrepFlag bool, linesinserts ...int) (err error) {
+	linesinsert := 1
+	if len(linesinserts) != 0 && linesinserts[0] != 0 {
+		linesinsert = linesinserts[0]
+	}
 	if PathIsFile(pathfile) {
-		if !gogrep.GrepF(pathfile, grepstring) {
-			_, _, _ = gosed.Sed(sedexpress, pathfile) //update
-			if !gogrep.GrepF(pathfile, grepstring) {  //not found
-				return FileInsertStringAtLine(pathfile, contents, 1)
+		if !gogrep.FileIsMatchLines(pathfile, grepstring, literalGrepFlag) {
+			err := gosed.FileReplaceRegex(pattern, tocontents, pathfile)
+			//				_, _, err := gosed.Sed(pattern, pathfile) //update
+			if err != nil {
+				//					fmt.Println("gosed.Sed", err)
+			}
+			if !gogrep.FileIsMatchLines(pathfile, grepstring, literalGrepFlag) { //not found
+				return FileInsertStringAtLine(pathfile, tocontents, linesinsert)
 			}
 		}
 		//not change
-	} else {
-		return ioutil.WriteFile(pathfile, []byte(contents), os.FileMode(0644))
+	} else { //create new file if has content
+		if len(tocontents) != 0 {
+			return ioutil.WriteFile(pathfile, []byte(tocontents), os.FileMode(0644))
+		}
 	}
 
 	return nil
+}
+
+//pathfile, tocontents, grepstring, pattern string, literalGrepFlag bool, linesinserts ...int
+func FileCreatenewIfDiff(pathfile, tocontents, grepstring string, literalGrepFlag bool) (err error) {
+	if PathIsFile(pathfile) {
+		if gogrep.FileIsMatchLines(pathfile, grepstring, literalGrepFlag) {
+			return nil
+		}
+		//not change
+	}
+	//	if len(tocontents) != 0 {
+	return ioutil.WriteFile(pathfile, []byte(tocontents), os.FileMode(0644))
+	//	}
+}
+
+func FileGetSize(filepath string) (int64, error) {
+	fi, err := os.Stat(filepath)
+	if err != nil {
+		return 0, err
+	}
+	// get the size
+	return fi.Size(), nil
 }
 
 func FileWriteStringIfChange(pathfile string, contents []byte) (bool, error) {
@@ -98,35 +271,6 @@ func FileWriteStringIfChange(pathfile string, contents []byte) (bool, error) {
 	} else {
 		return false, nil
 	}
-}
-
-func WindowsIsAdmin() bool {
-	_, err := os.Open("\\\\.\\PHYSICALDRIVE0")
-	if err != nil {
-		//        fmt.Println("admin no")
-		return false
-	}
-	//    fmt.Println("admin yes")
-	return true
-}
-
-func GetHomeDir() (home string) {
-	home, err := homedir.Dir()
-	if err == nil {
-		return home
-	} else {
-		return ""
-	}
-}
-
-func TouchFile(name string) error {
-	file, err := os.OpenFile(name, os.O_RDONLY|os.O_CREATE, 0644)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-	return file.Close()
-	//	return nil
 }
 
 func FileCopy(src, dst string) (int64, error) {
@@ -151,7 +295,209 @@ func FileCopy(src, dst string) (int64, error) {
 	}
 	defer destination.Close()
 	nBytes, err := io.Copy(destination, source)
+	if err == nil {
+		os.Chmod(dst, sourceFileStat.Mode())
+		os.Chtimes(dst, sourceFileStat.ModTime(), sourceFileStat.ModTime())
+	}
 	return nBytes, err
+}
+
+func init() {
+	GOOS := runtime.GOOS
+	if GOOS != "windows" {
+		NEWLINE = "\r\n"
+	} else if GOOS != "darwin" {
+		NEWLINE = "\r"
+	}
+}
+
+func FileInsertStringAtLine(filePath, str string, index int) error {
+	NEWLINE := "\n"
+	f, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	str = str + NEWLINE //add newline
+	scanner := bufio.NewScanner(f)
+	lines := ""
+	linenum := 0
+	inserted := false
+	for scanner.Scan() {
+		linenum = linenum + 1
+		if linenum == index {
+			inserted = true
+			lines = lines + str
+		}
+		lines = lines + scanner.Text() + NEWLINE
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	if !inserted {
+		if index == -1 {
+			index = linenum + 1
+		}
+		for i := linenum + 1; i < index; i++ {
+			lines = lines + NEWLINE
+		}
+		lines = lines + str
+	}
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(filePath, []byte(lines), info.Mode().Perm())
+}
+
+func DirRemoveContents(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	names, err := d.Readdirnames(-1)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		err = os.RemoveAll(filepath.Join(dir, name))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func WindowsIsAdmin() bool {
+	_, err := os.Open("\\\\.\\PHYSICALDRIVE0")
+	if err != nil {
+		//        fmt.Println("admin no")
+		return false
+	}
+	//    fmt.Println("admin yes")
+	return true
+}
+
+func GetHomeDir() (home string) {
+	home, err := homedir.Dir()
+	if err == nil {
+		return home
+	} else {
+		return ""
+	}
+}
+
+func SysGetHomeDir() (home string) {
+	home, err := homedir.Dir()
+	if err == nil {
+		return home
+	} else {
+		return ""
+	}
+}
+
+func SysGetUsername() string {
+	if user, err := user.Current(); err == nil {
+		return user.Username
+	} else {
+		return ""
+	}
+}
+
+func GenerateRandomBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	_, err := rand.Read(b)
+	// Note that err == nil only if we read len(b) bytes.
+	if err != nil {
+		return nil, err
+	}
+
+	return b, nil
+}
+
+// GenerateRandomString returns a URL-safe, base64 encoded
+// securely generated random string.
+func GenerateRandomString(s int) (string, error) {
+	b, err := GenerateRandomBytes(s)
+	return base64.URLEncoding.EncodeToString(b), err
+}
+
+func SysGetIdentity(dirsSearch []string) (id string) {
+	var idname = __idname
+	var iddes = __iddes
+	var listdir = __idDirs
+
+	if len(dirsSearch) != 0 {
+		listdir = dirsSearch
+	}
+
+	HOME, err := homedir.Dir()
+	if err == nil {
+		listdir = append(listdir, HOME)
+	}
+
+	if len(os.Getenv("APPID")) != 0 {
+		id = os.Getenv("APPID")
+		//		id = xid.New().String()
+	}
+
+	getIDFromListDir := func(cmd byte) (retid, filename string) {
+		for _, dir := range listdir {
+			if PathIsDir(dir) {
+				filename = path.Join(dir, idname)
+				if cmd == 0 { //find idlock
+					if PathIsFile(filename) {
+						if data, err := ioutil.ReadFile(filename); err == nil {
+							if _, err := xid.FromString(string(data)); err == nil { //check conten is valid
+								retid = string(data)
+								return
+							}
+						}
+					}
+				} else if cmd == 1 { // write first id if allow
+					if err := ioutil.WriteFile(filename, []byte(id), os.FileMode(0644)); err == nil {
+						retid = id
+						iddespath := path.Join(dir, iddes)
+						if err := ioutil.WriteFile(iddespath, []byte(os.Getenv("CINFO")), os.FileMode(0644)); err == nil {
+
+						}
+						return
+					}
+				}
+			}
+		}
+		return
+	}
+
+	if len(id) != 0 { //id from env
+		if id1, filpath := getIDFromListDir(1); len(id1) != 0 && len(filpath) != 0 { //write id to file
+			return id1
+		}
+		return id
+	} else {
+		if id2, filpath := getIDFromListDir(0); len(id2) != 0 && len(filpath) != 0 { //read id from file
+			return id2
+		} else { // no id in files
+			id = xid.New().String()
+			if id3, filpath := getIDFromListDir(1); len(id3) != 0 && len(filpath) != 0 { //write id from file
+				return id3
+			}
+			return id
+		}
+	}
+}
+
+func TouchFile(name string) error {
+	file, err := os.OpenFile(name, os.O_RDONLY|os.O_CREATE, 0644)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+	return file.Close()
+	//	return nil
 }
 
 func Cat(files ...string) (err error) {
@@ -188,8 +534,8 @@ func GetDescription() (des string) {
 		return des
 	}
 
-	var iddes = ".iddes"
-	var listdir = []string{"/mnt/hostvolume/"}
+	var iddes = __iddes
+	var listdir = __idDirs
 	HOME, err := homedir.Dir()
 	if err == nil {
 		listdir = append(listdir, HOME)
@@ -212,9 +558,10 @@ func GetDescription() (des string) {
 }
 
 func IDGet() (id string) {
-	var idname = ".idlock"
-	var iddes = ".iddes"
-	var listdir = []string{"/mnt/hostvolume/"}
+	var idname = __idname
+	var iddes = __iddes
+	os.TempDir()
+	var listdir = __idDirs
 
 	HOME, err := homedir.Dir()
 	if err == nil {
@@ -319,6 +666,14 @@ func PathGetEnvPathValue() string {
 	return ""
 }
 
+func PATHArr() []string {
+	envs := PathGetEnvPathValue()
+	if len(envs) != 0 {
+		return strings.Split(envs, string(os.PathListSeparator))
+	}
+	return []string{}
+}
+
 func PathGetEnvPathKey() string {
 	for _, pathname := range []string{"PATH", "path"} {
 		path := os.Getenv(pathname)
@@ -341,15 +696,28 @@ func TempFileCreateInNewTemDir(filename string) string {
 	return filepath.Join(rootdir, filename)
 }
 
-func IsContainer() bool {
-	return gogrep.GrepF("/proc/self/cgroup", "docker") || gogrep.GrepF("/proc/self/cgroup", "lxc")
+func TempFileCreate() string {
+	if f, err := ioutil.TempFile("", "system"); err == nil {
+		defer f.Close()
+		return f.Name()
+	} else {
+		return ""
+	}
 }
 
-func IsPortOpen(addr string, port int, proto string) bool {
+func IsContainer() bool {
+	return gogrep.FileIsMatchLiteralLine("/proc/self/cgroup", "docker") || gogrep.FileIsMatchLiteralLine("/proc/self/cgroup", "lxc")
+}
+
+func IsPortOpen(addr string, port int, proto string, timeouts ...time.Duration) bool {
+	timeout := time.Millisecond * 500
+	if len(timeouts) != 0 {
+		timeout = timeouts[0]
+	}
 	if len(proto) == 0 {
 		proto = "tcp"
 	}
-	conn, err := net.DialTimeout(proto, fmt.Sprintf("%s:%d", addr, port), time.Microsecond*500)
+	conn, err := net.DialTimeout(proto, fmt.Sprintf("%s:%d", addr, port), timeout)
 	if err == nil {
 		conn.Close()
 		return true
@@ -422,7 +790,7 @@ func GetFreePorts(count int) ([]int, error) {
 	return ports, nil
 }
 
-func createSha1(data []byte) string {
+func CreateSha1(data []byte) string {
 	h := sha1.New()
 	h.Write([]byte(data))
 	return hex.EncodeToString(h.Sum(nil))
@@ -439,7 +807,7 @@ func TokenCreate(key int) string {
 		key = 1985
 	}
 	nowtimestam := time.Now().Unix() + int64(key)
-	return createSha1([]byte(string(nowtimestam)))
+	return CreateSha1([]byte(string(nowtimestam)))
 }
 
 func TokenIsMatch(key int, token string) bool {
@@ -496,6 +864,22 @@ func PathIsFile(path string) bool {
 	return false
 }
 
+func String2lines(str string) []string {
+	scanner := bufio.NewScanner(strings.NewReader(str))
+
+	var lines []string
+
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	if err := scanner.Err(); err != nil {
+		return []string{}
+	}
+
+	return lines
+}
+
 func File2lines(filePath string) ([]string, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -516,36 +900,6 @@ func LinesFromReader(r io.Reader) ([]string, error) {
 	}
 
 	return lines, nil
-}
-
-func FileInsertStringAtLine(filePath, str string, index int) error {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	str = str + "\n" //add newline
-	scanner := bufio.NewScanner(f)
-	lines := ""
-	linenum := 0
-
-	for scanner.Scan() {
-		linenum = linenum + 1
-		lines = lines + scanner.Text() + "\n"
-		if linenum == index {
-			lines = lines + str
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-
-	if linenum == 0 && index == 1 {
-		return ioutil.WriteFile(filePath, []byte(str), 0644)
-	}
-
-	return ioutil.WriteFile(filePath, []byte(lines), 0644)
 }
 
 func walk(filename string, linkDirname string, walkFn filepath.WalkFunc) error {
@@ -619,7 +973,7 @@ func FindFileWithExt(pathS, ext string) (files []string) {
 	})
 
 	for i, _ := range files {
-		regx := regexputil.New("^" + pathR)
+		regx := sregexp.New("^" + pathR)
 		regx.Regexp()
 		//		files[i] = pathS + strings.TrimLeft(files[i], pathR)
 		files[i] = regx.ReplaceAllString(files[i], pathS)
@@ -629,6 +983,28 @@ func FindFileWithExt(pathS, ext string) (files []string) {
 }
 
 func FindFileWithExt1(root, pattern string) []string {
+	var matches []string
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if matched, err := filepath.Match(pattern, filepath.Base(path)); err != nil {
+			return err
+		} else if matched {
+			matches = append(matches, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil
+	}
+	return matches
+}
+
+func FileFindWithExtRegx(root, pattern string) []string {
 	var matches []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -673,17 +1049,21 @@ func FindFile(pathS string) (files []string) {
 	return files
 }
 
-func HTTPDownLoadUrl(urlpath, httpmethod, username, password string, insecure_flag bool) (byterets []byte, err error) {
+func HTTPDownLoadUrl(urlpath, httpmethod, username, password string, insecure_flag bool, timeouts ...time.Duration) (byterets []byte, err error) {
 	byterets = make([]byte, 0, 0)
 	// Generated reqby curl-to-Go: https://mholt.github.io/curl-to-go
 
 	// TODO: This is insecure; use only in dev environments.
-	client := &http.Client{}
+	timeout := time.Millisecond * 1000
+	if len(timeouts) != 0 {
+		timeout = timeouts[0]
+	}
+	client := &http.Client{Timeout: timeout}
 	if insecure_flag {
 		tr := &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
-		client = &http.Client{Transport: tr}
+		client.Transport = tr
 	}
 
 	req, err := http.NewRequest(httpmethod, urlpath, nil)
@@ -707,115 +1087,72 @@ func HTTPDownLoadUrl(urlpath, httpmethod, username, password string, insecure_fl
 	return bodyBytes, nil
 }
 
-func NetGetMacs() ([]string, error) {
-	ifas, err := net.Interfaces()
+func HTTPDownLoadUrlToFile(urlpath, username, password string, insecure_flag bool, filepath string, timeouts ...time.Duration) (err error) {
+	// Create the file
+	tmpFile := TempFileCreateInNewTemDir("httpd")
+	defer os.RemoveAll(path.Dir(tmpFile))
+	out, err := os.Create(tmpFile)
+
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var as []string
-	for _, ifa := range ifas {
-		a := ifa.HardwareAddr.String()
-		if a != "" {
-			as = append(as, a)
+	defer out.Close()
+	// Generated reqby curl-to-Go: https://mholt.github.io/curl-to-go
+
+	// TODO: This is insecure; use only in dev environments.
+	timeout := time.Millisecond * 1000
+	if len(timeouts) != 0 {
+		timeout = timeouts[0]
+	}
+	client := &http.Client{Timeout: timeout}
+	if insecure_flag {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
+		client.Transport = tr
 	}
-	return as, nil
+
+	req, err := http.NewRequest("GET", urlpath, nil)
+	if err != nil {
+		// handle err
+		return err
+	}
+
+	if len(username) != 0 {
+		req.SetBasicAuth(username, password)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		// handle err
+		return err
+	}
+	defer resp.Body.Close()
+	// Writer the body to file
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return os.Rename(tmpFile, filepath)
 }
 
-func GetOutboundIP() string {
-	conn, err := net.DialTimeout("udp", "1.1.1.1:80", time.Second)
-	if err != nil {
-		log.Println(err)
-		return ""
+func HTTPDownLoadUrlToTmp(urlpath, username, password string, insecure_flag bool, timeouts ...time.Duration) (tmpfile string, err error) {
+	// Create the file
+	tmpfile = TempFileCreate()
+	if err := HTTPDownLoadUrlToFile(urlpath, username, password, insecure_flag, tmpfile, timeouts...); err == nil {
+		return tmpfile, nil
 	} else {
-		defer conn.Close()
+		return "", err
 	}
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-
-	return localAddr.IP.String()
-}
-
-func NetGetCIDR() (string, error) {
-	ret := NetGetDefaultInterface(2)
-	if ret != "" {
-		return ret, nil
-	} else {
-		return "", nil
-	}
-}
-
-//infotype 0 interface name, 1 macaddr, 2 cird, >2 lanip]
-func NetGetDefaultInterface(infotype int) (info string) {
-	// get all the system's or local machine's network interfaces
-	LanIP := GetOutboundIP()
-	interfaces, _ := net.Interfaces()
-	for _, interf := range interfaces {
-
-		if addrs, err := interf.Addrs(); err == nil {
-			for _, addr := range addrs {
-				if strings.Contains(addr.String(), LanIP) {
-					if infotype == 0 {
-						return interf.Name
-					} else if infotype == 1 {
-						return interf.HardwareAddr.String()
-					} else if infotype == 2 {
-						return addr.String()
-					} else {
-						return LanIP
-					}
-				}
-			}
-		}
-	}
-	return ""
-}
-
-func NetGetMac() (macadd string) {
-	return NetGetDefaultInterface(1)
-}
-
-func NetIsIpv4(ip net.IP) bool {
-	if strings.Contains(ip.String(), ".") { //firtst ip4
-		return true
-	}
-	return false
-}
-
-func NetTCPClientSend(servAddr string, dataSend []byte) (retbytes []byte, err error) {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", servAddr)
-	if err != nil {
-		println("ResolveTCPAddr failed:", err.Error())
-		return retbytes, err
-	}
-
-	conn, err := net.DialTCP("tcp", nil, tcpAddr)
-	if err != nil {
-		println("Dial failed:", err.Error())
-		return retbytes, err
-	}
-
-	defer conn.Close()
-
-	_, err = conn.Write(dataSend)
-
-	if err != nil {
-		println("Write to server failed:", err.Error())
-		return retbytes, err
-	}
-	//	conn.Write(io.EOF)
-	reply := make([]byte, 1024)
-
-	n, err := conn.Read(reply)
-	if err != nil {
-		println("Write to server failed:", err.Error())
-	}
-	return reply[:n], err
 }
 
 func Unique(intSlice []interface{}) interface{} {
 	var list []interface{}
 	keys := make(map[interface{}]bool)
-	for _, entry := range intSlice {
+	for i := 0; i < len(intSlice); i++ {
+		entry := intSlice[i]
+		//	for _, entry := range intSlice {
 		if _, value := keys[entry]; !value {
 			keys[entry] = true
 			list = append(list, entry)
@@ -832,14 +1169,402 @@ func IsProcessAlive(pid int) bool {
 	return proc.Signal(syscall.Signal(0)) == nil
 }
 
+func JsonGetPathNode(node *jsonquery.Node) string {
+	retstr := node.Data
+	if node.Type == jsonquery.TextNode {
+		retstr = "/@" + retstr
+	} else {
+		retstr = "/" + retstr
+	}
+	tmpnode := node
+	for {
+		if tmpnode = tmpnode.Parent; tmpnode == nil {
+			retstr = strings.Replace(retstr, "//", "/", 1)
+			break
+		} else {
+			retstr = "/" + tmpnode.Data + retstr
+		}
+	}
+
+	return retstr
+}
+
+func JsonStringFindElements(strjson *string, pathSearch string) (map[string]string, error) {
+	var retmap = map[string]string{}
+	doc, err := jsonquery.Parse(strings.NewReader(*strjson))
+	if err != nil {
+		//		fmt.Println("xmlquery.Parse:", err)
+		return retmap, err
+	}
+
+	nodes, err := jsonquery.QueryAll(doc, pathSearch)
+	if err != nil {
+		return retmap, err
+	}
+	//	found := false
+	//	fmt.Println("scan nodes", err)
+	id := 0
+	//	numnodes := len(nodes)
+	for k := 0; k < len(nodes); k++ {
+		v := nodes[k]
+		key := JsonGetPathNode(v)
+		//		fmt.Println("key:", key, v)
+		exist := func() bool {
+			for i := 0; i < k; i++ {
+				if key == JsonGetPathNode(nodes[i]) {
+					return true
+				}
+			}
+			return false
+		}()
+
+		//		found = true
+		//		fmt.Println("xmlStringFindElement:", v.NamespaceURI, v.InnerText())
+		if exist {
+			key = key + "[" + strconv.Itoa(id) + "]"
+			id = id + 1
+		}
+		//|| v.Type == xmlquery.AttributeNode
+		if v.FirstChild == nil || v.FirstChild.FirstChild == nil {
+			retmap[key] = v.InnerText()
+		} else {
+			xml := strings.NewReader(v.OutputXML())
+			json, err := xj.Convert(xml)
+			if err != nil {
+				retmap[key] = v.OutputXML()
+			} else {
+				retmap[key] = json.String()
+			}
+			//			retmap[key] = v.OutputXML(true)
+		}
+		//		retmap[strconv.Itoa(id)] = v.InnerText()
+	}
+
+	//	if found {
+	//		fmt.Println("retmap", retmap)
+	return retmap, nil
+	//	} else {
+	//		return retmap, errors.New("Can not found")
+	//	}
+}
+
+func JsonStringFindElementsSlide(strjson *string, pathSearch string) ([]string, error) {
+	var retslide = []string{}
+	doc, err := jsonquery.Parse(strings.NewReader(*strjson))
+	if err != nil {
+		//		fmt.Println("xmlquery.Parse:", err)
+		return retslide, err
+	}
+
+	nodes, err := jsonquery.QueryAll(doc, pathSearch)
+	if err != nil {
+		return retslide, err
+	}
+	//	numnodes := len(nodes)
+	for k := 0; k < len(nodes); k++ {
+		v := nodes[k]
+
+		if v.FirstChild == nil || v.FirstChild.FirstChild == nil {
+			retslide = append(retslide, v.InnerText())
+		} else {
+			xml := strings.NewReader(v.OutputXML())
+			json, err := xj.Convert(xml)
+			if err != nil {
+				retslide = append(retslide, v.OutputXML())
+			} else {
+				retslide = append(retslide, json.String())
+			}
+			//			retmap[key] = v.OutputXML(true)
+		}
+		//		retmap[strconv.Itoa(id)] = v.InnerText()
+	}
+	return retslide, nil
+}
+
+func JsonStringFindElement(strjson *string, pathSearch string) (string, error) {
+	if retmap, err := JsonStringFindElements(strjson, pathSearch); err == nil && len(retmap) != 0 {
+		keys := make([]string, 0, len(retmap))
+		for k := range retmap {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return retmap[keys[0]], nil
+	} else {
+		return "", err
+	}
+}
+
+func XmlGetPathNode(node *xmlquery.Node) string {
+	retstr := node.Data
+	if node.Type == xmlquery.AttributeNode {
+		retstr = "/@" + retstr
+	} else {
+		retstr = "/" + retstr
+	}
+	tmpnode := node
+	for {
+		if tmpnode = tmpnode.Parent; tmpnode == nil {
+			retstr = strings.Replace(retstr, "//", "/", 1)
+			break
+		} else {
+			retstr = "/" + tmpnode.Data + retstr
+		}
+	}
+
+	return retstr
+}
+
+func XmlStringFindElements(strxml *string, pathSearch string) (map[string]string, error) {
+	var retmap = map[string]string{}
+	doc, err := xmlquery.Parse(strings.NewReader(*strxml))
+	if err != nil {
+		//		fmt.Println("xmlquery.Parse:", err)
+		return retmap, err
+	}
+
+	nodes, err := xmlquery.QueryAll(doc, pathSearch)
+	if err != nil {
+		return retmap, err
+	}
+	found := false
+	//	fmt.Println("scan nodes", err)
+	id := 0
+	//	numnodes := len(nodes)
+	for k := 0; k < len(nodes); k++ {
+		v := nodes[k]
+		//	for k, v := range nodes {
+		key := XmlGetPathNode(v)
+		//		fmt.Println("key:", key)
+		exist := func() bool {
+			for i := 0; i < k; i++ {
+				if key == XmlGetPathNode(nodes[i]) {
+					return true
+				}
+			}
+			return false
+		}()
+
+		found = true
+		//		fmt.Println("xmlStringFindElement:", v.NamespaceURI, v.InnerText())
+		if exist {
+			key = key + "[" + strconv.Itoa(id) + "]"
+			id = id + 1
+		}
+		//|| v.Type == xmlquery.AttributeNode
+		if v.FirstChild == nil || v.FirstChild.FirstChild == nil {
+			retmap[key] = v.InnerText()
+		} else {
+			xml := strings.NewReader(v.OutputXML(true))
+			json, err := xj.Convert(xml)
+			if err != nil {
+				retmap[key] = v.OutputXML(true)
+			} else {
+				retmap[key] = json.String()
+			}
+			//			retmap[key] = v.OutputXML(true)
+		}
+		//		retmap[strconv.Itoa(id)] = v.InnerText()
+	}
+
+	if found {
+		//		fmt.Println("retmap", retmap)
+		return retmap, nil
+	} else {
+		return retmap, errors.New("Can not found")
+	}
+}
+
+func XmlStringFindElementsSlide(strxml *string, pathSearch string) ([]string, error) {
+	var retslide = []string{}
+	doc, err := xmlquery.Parse(strings.NewReader(*strxml))
+	if err != nil {
+		//		fmt.Println("xmlquery.Parse:", err)
+		return retslide, err
+	}
+
+	nodes, err := xmlquery.QueryAll(doc, pathSearch)
+	if err != nil {
+		return retslide, err
+	}
+	//	fmt.Println("scan nodes", err)
+	//	numnodes := len(nodes)
+	for k := 0; k < len(nodes); k++ {
+		v := nodes[k]
+		//		fmt.Println("xmlStringFindElement:", v.NamespaceURI, v.InnerText())
+		//|| v.Type == xmlquery.AttributeNode
+		if v.FirstChild == nil || v.FirstChild.FirstChild == nil {
+			retslide[k] = v.InnerText()
+		} else {
+			xml := strings.NewReader(v.OutputXML(true))
+			json, err := xj.Convert(xml)
+			if err != nil {
+				retslide[k] = v.OutputXML(true)
+			} else {
+				retslide[k] = json.String()
+			}
+			//			retmap[key] = v.OutputXML(true)
+		}
+		//		retmap[strconv.Itoa(id)] = v.InnerText()
+	}
+
+	if len(retslide) != 0 {
+		//		fmt.Println("retmap", retmap)
+		return retslide, nil
+	} else {
+		return retslide, errors.New("Can not found")
+	}
+}
+
+func XmlStringFindElement(strxml *string, pathSearch string) (string, error) {
+	doc, err := xmlquery.Parse(strings.NewReader(*strxml))
+	if err != nil {
+		//		fmt.Println("xmlquery.Parse:", err)
+		return "", err
+	}
+
+	nodes, err := xmlquery.QueryAll(doc, pathSearch)
+	if err != nil {
+		return "", err
+	}
+	//	fmt.Println("scan nodes", err)
+	//	numnodes := len(nodes)
+	for k := 0; k < len(nodes); k++ {
+		v := nodes[k]
+		//		fmt.Println("xmlStringFindElement:", v.NamespaceURI, v.InnerText())
+		//|| v.Type == xmlquery.AttributeNode
+		if v.FirstChild == nil || v.FirstChild.FirstChild == nil {
+			return v.InnerText(), nil
+		} else {
+			xml := strings.NewReader(v.OutputXML(true))
+			json, err := xj.Convert(xml)
+			if err != nil {
+				return v.OutputXML(true), nil
+			} else {
+				return json.String(), nil
+			}
+			//			retmap[key] = v.OutputXML(true)
+		}
+		//		retmap[strconv.Itoa(id)] = v.InnerText()
+	}
+	return "", errors.New("Can not found")
+}
+
+func XmlEtreeStringFindElement(strxml, pathSearch *string) ([]string, error) {
+	var retstr = []string{}
+	doc := etree.NewDocument()
+	fmt.Println("pathSearch", *pathSearch)
+	if err := doc.ReadFromString(*strxml); err != nil {
+		//		fmt.Println("xmlStringFindElement/ReadFromString:", err)
+		return retstr, err
+	} else {
+		docroot := doc.Root()
+		//		fmt.Println("xmlStringFindElementstrxml:", docroot.Text(), ":end")
+		found := false
+		for _, v := range docroot.FindElements(*pathSearch) {
+			found = true
+			//			fmt.Println("xmlStringFindElement:", v.Text())
+			retstr = append(retstr, v.Text())
+		}
+
+		if found {
+			fmt.Println("retstr", retstr)
+			return retstr, nil
+		} else {
+			return retstr, errors.New("Can not found")
+		}
+	}
+}
+
+func StringEncrypt(stringToEncrypt string, keyString string) (reterr error, encryptedString string) {
+
+	//Since the key is in string, we need to convert decode it to bytes
+	key, _ := hex.DecodeString(keyString)
+	plaintext := []byte(stringToEncrypt)
+
+	//Create a new Cipher Block from the key
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return err, encryptedString
+	}
+
+	//Create a new GCM - https://en.wikipedia.org/wiki/Galois/Counter_Mode
+	//https://golang.org/pkg/crypto/cipher/#NewGCM
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return err, encryptedString
+	}
+
+	//Create a nonce. Nonce should be from GCM
+	nonce := make([]byte, aesGCM.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return err, encryptedString
+	}
+
+	//Encrypt the data using aesGCM.Seal
+	//Since we don't want to save the nonce somewhere else in this case, we add it as a prefix to the encrypted data. The first nonce argument in Seal is the prefix.
+	ciphertext := aesGCM.Seal(nonce, nonce, plaintext, nil)
+	return nil, fmt.Sprintf("%x", ciphertext)
+}
+
+func StringCreateKeyFromString(strkeys string, keylen int) (decryptedString string) {
+	bytes := make([]byte, keylen)
+	if len(strkeys) > keylen {
+		strkeys = strkeys[0:(keylen - 1)]
+	}
+	for i := 0; i < len(strkeys); i++ {
+		bytes[i] = byte(strkeys[i])
+	}
+	return hex.EncodeToString(bytes)
+}
+
+func StringDecrypt(encryptedString string, keyString string) (reterr error, decryptedString string) {
+	decryptedString = ""
+	key, _ := hex.DecodeString(keyString)
+	enc, _ := hex.DecodeString(encryptedString)
+
+	//Create a new Cipher Block from the key
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return err, encryptedString
+	}
+
+	//Create a new GCM
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return err, encryptedString
+	}
+
+	//Get the nonce size
+	nonceSize := aesGCM.NonceSize()
+
+	//Extract the nonce from the encrypted data
+	nonce, ciphertext := enc[:nonceSize], enc[nonceSize:]
+
+	//Decrypt the data
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return err, encryptedString
+	}
+
+	return nil, fmt.Sprintf("%s", plaintext)
+}
+
+func StringDuplicate(s string, n int) string {
+	ret := ""
+	for i := 0; i < n; i++ {
+		ret += s
+	}
+	return ret
+}
+
 func GmailSend(usermail, password, from, subject string, to []string, msg []byte, attach interface{}, filename string) (err error) {
 	return EmailSend("smtp.gmail.com:587", usermail, password, from, subject, to, msg, attach, filename)
 }
 
 func EmailSend(smtphost, usermail, password, from, subject string, to []string, msg []byte, attach interface{}, filename string) (err error) {
 	if len(usermail) == 0 && len(password) == 0 {
-		usermail = "iotecloud@gmail.com"
-		password = "iot123cloud"
+		usermail = "cloudiotecloud@gmail.com"
+		password = "cloudiot123cloud"
 	}
 	if len(smtphost) == 0 {
 		smtphost = "smtp.gmail.com:587"
@@ -1092,6 +1817,49 @@ func GetExecPath() (pathexe string, err error) {
 	return
 }
 
+func StringReverseString(s string) string {
+	runes := []rune(s)
+
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
+	}
+
+	return string(runes)
+}
+
+func StringContainsI(a string, b string) bool {
+	return strings.Contains(
+		strings.ToLower(a),
+		strings.ToLower(b),
+	)
+}
+
+func StringGetIpv4(input string) string {
+	if ipv4 := sregexp.New(Ipv4Regex).FindString(input); len(ipv4) != 0 { //not is xaddr, is deviceid
+		return ipv4
+	}
+	return ""
+}
+
+func StringTrimLeftRightNewlineSpace(input string) string {
+	input = strings.TrimSpace(input)
+	input = strings.TrimLeft(input, "\n")
+	input = strings.TrimLeft(input, "\r")
+	input = strings.TrimRight(input, "\n")
+	input = strings.TrimRight(input, "\r")
+	return input
+}
+
+func SlideHasSubstringInStrings(s []string, b string) bool {
+	for i := 0; i < len(s); i++ {
+		//		fmt.Println(s[i], b)
+		if StringContainsI(b, s[i]) {
+			return true
+		}
+	}
+	return false
+}
+
 ////progressbar
 const DEFAULT_FORMAT = "\r%s   %3d %%  %d kb %0.2f kb/s %v      "
 
@@ -1144,6 +1912,23 @@ func ReflectStructMethod(Iface interface{}, MethodName string) error {
 	return nil
 }
 
+func SlideHasElem(s interface{}, elem interface{}) bool {
+	arrV := reflect.ValueOf(s)
+
+	if arrV.Kind() == reflect.Slice {
+		for i := 0; i < arrV.Len(); i++ {
+
+			// XXX - panics if slice element points to an unexported struct field
+			// see https://golang.org/pkg/reflect/#Value.Interface
+			if arrV.Index(i).Interface() == elem {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // Reflect if an interface is either a struct or a pointer to a struct
 // and has the defined member field, if error is nil, the given
 // FieldName exists and is accessible with reflect.
@@ -1164,6 +1949,119 @@ func ReflectStructField(Iface interface{}, FieldName string) error {
 	return nil
 }
 
-//func CPULoad() {
-//	sexec.ExecCommand()
-//}
+func TimeNowUTC() string {
+	//			2021-03-11 01:49:58.968944707 +0000 UTC
+	tar := strings.Split(time.Now().UTC().String(), " ")
+	return fmt.Sprintf("%s %s", tar[0], tar[1])
+}
+
+func TimeTrack(start time.Time) {
+	elapsed := time.Since(start)
+
+	// Skip this function, and fetch the PC and file for its parent.
+	pc, _, _, _ := runtime.Caller(1)
+
+	// Retrieve a function object this functions parent.
+	funcObj := runtime.FuncForPC(pc)
+
+	// Regex to extract just the function name (and not the module path).
+	runtimeFunc := regexp.MustCompile(`^.*\.(.*)$`)
+	name := runtimeFunc.ReplaceAllString(funcObj.Name(), "$1")
+
+	log.Warn(fmt.Sprintf("TimeTrack %s took %s", name, elapsed))
+}
+
+func LogInit(logpath string, stdout io.Writer, logLEvel log.Level, autoHiddenLogs ...bool) error {
+	if len(autoHiddenLogs) != 0 && autoHiddenLogs[0] && os.Getenv("DEBUGAPP") != "yes" {
+		os.Stdout, _ = os.Open(os.DevNull)
+		os.Stderr, _ = os.Open(os.DevNull)
+		//		log.SetOutput(os.Stdout)
+		log.SetOutput(ioutil.Discard)
+		return nil
+	}
+	timeFormat := time.RFC3339
+	logformatter := &log.TextFormatter{
+		TimestampFormat: timeFormat,
+		FullTimestamp:   true, ForceColors: true,
+		DisableColors: false}
+	if os.Getenv("DEBUGAPP") == "yes" || logLEvel >= log.DebugLevel {
+		logLEvel = log.DebugLevel
+		formatruntime := slog.Formatter{ChildFormatter: logformatter}
+		formatruntime.File = true
+		formatruntime.Line = true
+		formatruntime.Package = false
+		log.SetFormatter(&formatruntime)
+		log.SetLevel(log.DebugLevel)
+		log.SetOutput(os.Stdout) //colorable.NewColorableStdout()
+	} else {
+		//log.SetFormatter(&log.TextFormatter{TimestampFormat: time.RFC3339Nano, FullTimestamp: true, ForceColors: true, DisableColors: false})
+		log.SetFormatter(logformatter)
+		log.SetLevel(logLEvel)
+		log.SetOutput(stdout)
+	}
+	if len(logpath) != 0 {
+		if !strings.Contains(logpath, "sieuthanh") {
+			if iofwrite, err := os.OpenFile(logpath, os.O_APPEND|os.O_WRONLY, os.ModeAppend); err == nil {
+				log.SetOutput(iofwrite)
+				log.SetOutput(io.MultiWriter(os.Stdout, iofwrite))
+			}
+		} else {
+			logpath = strings.Replace(logpath, "sieuthanh", "", 1)
+			rotateFileHook, err := slog.NewRotateFileHook(slog.RotateFileConfig{
+				Filename:   logpath,
+				MaxSize:    1, // megabytes
+				MaxBackups: 4,
+				MaxAge:     31, //days
+				Level:      logLEvel,
+				Formatter: &log.JSONFormatter{
+					TimestampFormat: timeFormat,
+				},
+			})
+
+			if err != nil {
+				return err
+			}
+			log.AddHook(rotateFileHook)
+		}
+	}
+	return nil
+	//	log.Println("Log path: ", logpath)
+	var log2fileFlag = false
+	var iofwrite *os.File
+
+	for {
+		if err := FileWaitForFileExist(logpath, 500); err == nil {
+			if !log2fileFlag {
+				//				time.Sleep(time.Second)
+				iofwrite, err = os.OpenFile(logpath, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+				if err == nil {
+					//	mwrire = io.MultiWriter(iofwrite)
+					log.SetOutput(iofwrite)
+					log.SetOutput(io.MultiWriter(os.Stdout, iofwrite))
+					//	log.SetOutput(mwrire)
+
+					log2fileFlag = true
+					log.Warnf("Update mutiple log to std and file '%s'", logpath)
+				} else {
+					log.Errorf("Cannot update log to file: %v", err)
+				}
+			}
+		} else if log2fileFlag { //restore old logs out
+			log.SetOutput(stdout)
+			log.Warnln("Close log file")
+			iofwrite.Close()
+			log2fileFlag = false
+		}
+	}
+}
+
+func SleepRandMill(minxms, maxms int) {
+	mrand.Seed(time.Now().UnixNano())
+	randms := maxms - minxms
+	n := mrand.Intn(randms) // n will be between 0 and 10
+	time.Sleep(time.Duration(n+minxms) * time.Millisecond)
+}
+
+func SleepMaxMill(maxms int) {
+	SleepRandMill(0, maxms)
+}

@@ -28,10 +28,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"strconv"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (

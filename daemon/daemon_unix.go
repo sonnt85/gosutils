@@ -5,8 +5,10 @@ package daemon
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/sonnt85/gosutils/sutils"
 	"os"
+
+	"github.com/sonnt85/gosutils/sutils"
+
 	//	"os/exec"
 	"path"
 	"path/filepath"
@@ -56,6 +58,7 @@ type Context struct {
 	rpipe, wpipe    *os.File
 	NameProg        string
 	ExeRealPathFake string
+	CloneFlag       bool
 }
 
 func (d *Context) reborn() (child *os.Process, err error) {
@@ -102,7 +105,9 @@ func (d *Context) parent() (child *os.Process, err error) {
 	if len(d.ExeRealPathFake) != 0 {
 		defer func() {
 			//			log.Println("\nRemove Exe symlink file\n")
+			//			if !d.CloneFlag {
 			os.RemoveAll(path.Dir(d.ExeRealPathFake))
+			//			}
 		}()
 	}
 	if child, err = os.StartProcess(d.abspath, d.Args, attr); err != nil {
@@ -183,6 +188,7 @@ func (d *Context) closeFiles() (err error) {
 
 func (d *Context) prepareEnv() (err error) {
 	if d.abspath, err = osExecutable(); err != nil {
+		//		fmt.Println("can not get exec from prepareEnv")
 		return
 	}
 
@@ -192,15 +198,25 @@ func (d *Context) prepareEnv() (err error) {
 	if len(d.NameProg) != 0 {
 		tmppath := sutils.TempFileCreateInNewTemDir(d.NameProg)
 		if len(tmppath) != 0 {
-			if os.Symlink(d.abspath, tmppath) == nil {
-				//				log.Printf("\nUse fake name: %v\n", tmppath)
-				os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(sutils.PathGetEnvPathValue(), path.Dir(tmppath)))
-				d.Args[0] = d.NameProg
-				d.abspath = tmppath
-				d.ExeRealPathFake = tmppath
-				//				log.Printf("\nUse fake name: %v\n%v:%v\n", tmppath, sutils.PathGetEnvPathKey(), sutils.PathGetEnvPathValue())
-
+			if d.CloneFlag {
+				_, err = sutils.FileCopy(d.abspath, tmppath)
+				//				err = os.Rename(d.abspath, tmppath)
+				err = os.Chmod(tmppath, 0755)
+				if err != nil {
+					//					log.Println("Can not clone file", err)
+				}
+			} else {
+				err = os.Symlink(d.abspath, tmppath)
 			}
+			if err != nil {
+				return err
+			}
+			//				log.Printf("\nUse fake name: %v\n", tmppath)
+			os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(sutils.PathGetEnvPathValue(), path.Dir(tmppath)))
+			d.Args[0] = d.NameProg
+			d.abspath = tmppath
+			d.ExeRealPathFake = tmppath
+			//				log.Printf("\nUse fake name: %v\n%v:%v\n", tmppath, sutils.PathGetEnvPathKey(), sutils.PathGetEnvPathValue())
 		}
 	}
 	mark := fmt.Sprintf("%s=%s", MARK_NAME, MARK_VALUE)
@@ -208,6 +224,8 @@ func (d *Context) prepareEnv() (err error) {
 		d.Env = os.Environ()
 	}
 	d.Env = append(d.Env, mark)
+	d.Env = append(d.Env, fmt.Sprintf("%s=%s", ASBPATHORG_NAME, d.abspath))
+	d.Env = append(d.Env, fmt.Sprintf("%s=%s", ASBPATHCLONE_NAME, d.ExeRealPathFake))
 
 	return
 }

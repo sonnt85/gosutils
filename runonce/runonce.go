@@ -10,6 +10,7 @@ import (
 	//	"github.com/getlantern/daemon"
 
 	"github.com/sonnt85/gosutils/sutils"
+	"github.com/sonnt85/snetutils"
 
 	"context"
 	"io"
@@ -289,7 +290,7 @@ func (gVar *RunOnceConf) GenerateCmd() (err error) {
 
 func (gVar *RunOnceConf) Poll() bool {
 
-	if retbytes, err := sutils.NetTCPClientSend(fmt.Sprintf("localhost:%d", gVar.Port), []byte("ping")); err == nil {
+	if retbytes, err := snetutils.NetTCPClientSend(fmt.Sprintf("localhost:%d", gVar.Port), []byte("ping")); err == nil {
 		//		log.Printf("retbytes: %s", retbytes)
 		if string(retbytes) == "pong" {
 			log.Warningln("App is running....")
