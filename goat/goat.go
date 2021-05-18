@@ -9,9 +9,9 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/sonnt85/gonmmm"
 	"github.com/sonnt85/gosutils/gogrep"
 	"github.com/sonnt85/gosutils/sexec"
-	"github.com/sonnt85/gosutils/shellwords"
 	"github.com/sonnt85/gosutils/sregexp"
 	"github.com/sonnt85/gosutils/sutils"
 	"github.com/tarm/serial"
@@ -94,22 +94,21 @@ func MMConfigApn(dev, apn, username, password string) (err error) {
 	//nmcli connection add type gsm ifname "*" con-name gsmttyUSB2 apn soracom.io user sora password sora
 	iface := dev
 	cmd := fmt.Sprintf(`con del gsm%s`, dev)
-	if stderr, err := NMRunCommand(cmd); err != nil {
+	if stderr, err := gonmmm.NMRunCommand(cmd); err != nil {
 		log.Warnf("Can not delete old gsm connection: %s", stderr)
 	}
 
 	//	iface = `*`
 	cmd = fmt.Sprintf(`connection add type gsm ifname "%s" con-name gsm%s apn "%s" user "%s" password "%s"`, iface, dev, apn, username, password)
-	if stderr, err := NMRunCommand(cmd); err != nil {
+	if stderr, err := gonmmm.NMRunCommand(cmd); err != nil {
 		log.Error("Can not add  gsm connection: ", stderr)
 		return err
 	}
 	time.Sleep(time.Second * 10)
-	cmd = fmt.Sprintf(`con up gsm%s`, dev)
-	if _, err = NMRunCommand(cmd); err != nil {
-		log.Errorf("Can not up gsmconnection %s", err.Error())
-		//		return err
+	if err := gonmmm.NMUpCon(fmt.Sprintf(`gsm%s`, dev)); err != nil {
+		log.Warn(err.Error())
 	}
+
 	if false {
 		if bindex := MMGetBearer(); len(bindex) != 0 {
 			if err := MMDeletteBearer(bindex); err != nil {
@@ -123,14 +122,14 @@ func MMConfigApn(dev, apn, username, password string) (err error) {
 		//	MMSimpleConnect(apn, username, password)
 
 		cmd = fmt.Sprintf(`con mod gsm%s ipv4.dns "1.1.1.1"`, dev)
-		if _, err = NMRunCommand(cmd); err != nil {
+		if _, err = gonmmm.NMRunCommand(cmd); err != nil {
 			log.Errorf("Can not update dns gsm connection %s", err.Error())
 			return err
 		}
 	}
 
 	cmd = fmt.Sprintf(`con mod gsm%s connection.autoconnect yes`, dev)
-	if _, err = NMRunCommand(cmd); err != nil {
+	if _, err = gonmmm.NMRunCommand(cmd); err != nil {
 		log.Errorf("Can not update auto connect for gsm connection %s", err.Error())
 		return err
 	}
@@ -228,9 +227,9 @@ func MMInitModem() (err error) {
 		}
 		time.Sleep(time.Second * 1)
 	}
-	MMSendAtCommand("AT+CFUN=1")
+	gonmmm.MMSendAtCommand("AT+CFUN=1")
 	MMPDPdEL([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
-	MMSendAtCommand("AT+CFUN=1")
+	gonmmm.MMSendAtCommand("AT+CFUN=1")
 	//	gosystem.InitSignal(func() { sexec.ExecCommand("systemctl", "start", "ModemManager") })
 	return nil
 	timeoutAt := time.Now().Add(time.Second * 10)
@@ -238,7 +237,7 @@ func MMInitModem() (err error) {
 		if time.Now().After(timeoutAt) {
 			break
 		}
-		_, err = MMSendAtCommand("AT+CFUN=1")
+		_, err = gonmmm.MMSendAtCommand("AT+CFUN=1")
 		if err == nil {
 			MMAte0()
 			return
@@ -264,7 +263,7 @@ func MMSetApn(apn string) (retstr string, err error) {
 
 	for i, iptype := range contypeMap {
 		atcmd := fmt.Sprintf(`AT+CGDCONT=%d,"%s","%s"`, i, iptype, apn)
-		if _, err1 := MMSendAtCommand(atcmd, time.Minute*4); err != nil {
+		if _, err1 := gonmmm.MMSendAtCommand(atcmd, time.Minute*4); err != nil {
 			err = err1
 			retstr = fmt.Sprintf(`%s [%s] `, retstr, err.Error())
 		}
@@ -274,7 +273,7 @@ func MMSetApn(apn string) (retstr string, err error) {
 
 func MMPDPdEL(indexs []int) (errindex []int) {
 	for _, v := range indexs {
-		if _, err := MMSendAtCommand(fmt.Sprintf("+CGDCONT=%d", v)); err != nil {
+		if _, err := gonmmm.MMSendAtCommand(fmt.Sprintf("+CGDCONT=%d", v)); err != nil {
 			errindex = append(errindex, v)
 			//			return
 		}
@@ -346,7 +345,7 @@ func MMCreateBearer(apn, username, passowrd string) (err error) {
 	//	mmparas := fmt.Sprintf(`--create-bearer='ip-type=ipv4,apn=%s,user=%s,password=%s'`, apn, username, passowrd)
 	mmparas := fmt.Sprintf(`--create-bearer='apn=%s,user=%s,password=%s'`, apn, username, passowrd)
 
-	if _, err := MMRunCommand(mmparas, time.Second*20); err == nil {
+	if _, err := gonmmm.MMRunCommand(mmparas, time.Second*20); err == nil {
 		return nil
 	} else {
 		//		log.Errorf("Command error: %s", mmparas)
@@ -357,7 +356,7 @@ func MMCreateBearer(apn, username, passowrd string) (err error) {
 func MMDeletteBearer(bindex string) (err error) {
 	//	mmcli -m 2 --create-bearer="apn=<APN Address Here>,user=<User Name Here>,password=<Password Here>"
 	mmparas := fmt.Sprintf(`--delete-bearer=%s`, bindex)
-	if _, err := MMRunCommand(mmparas, time.Second*2); err == nil {
+	if _, err := gonmmm.MMRunCommand(mmparas, time.Second*2); err == nil {
 		return nil
 	} else {
 		return err
@@ -367,7 +366,7 @@ func MMDeletteBearer(bindex string) (err error) {
 func MMSimpleConnect(apn, username, passowrd string) (ok bool) {
 	ok = false
 	mmparas := fmt.Sprintf(`--timeout 500 --simple-connect='ip-type=ipv4,apn=%s,user=%s,password=%s'`, apn, username, passowrd)
-	if _, err := MMRunCommand(mmparas, time.Minute*6); err == nil {
+	if _, err := gonmmm.MMRunCommand(mmparas, time.Minute*6); err == nil {
 		return true
 	} else {
 		return
@@ -380,7 +379,7 @@ func MMGetPDP() (pdps map[string][]string, err error) { //auto delete empty apn
 	var tmpstring string
 	pdps = map[string][]string{}
 
-	tmpstring, err = MMSendAtCommand("+CGDCONT?")
+	tmpstring, err = gonmmm.MMSendAtCommand("+CGDCONT?")
 	if err != nil {
 		return pdps, err
 	}
@@ -410,12 +409,12 @@ func Ate1(dev string) (retstr string, err error) {
 }
 
 func MMAte1() (err error) {
-	_, err = MMSendAtCommand("ATE1")
+	_, err = gonmmm.MMSendAtCommand("ATE1")
 	return err
 }
 
 func MMAte0() (err error) {
-	_, err = MMSendAtCommand("ATE0")
+	_, err = gonmmm.MMSendAtCommand("ATE0")
 	return err
 }
 
@@ -455,7 +454,7 @@ func MMGetListNetwork() (retstr map[string][]string, err error) {
 	//21403 - Orange (umts, forbidden)
 	retstr = make(map[string][]string)
 	mmretstr := ""
-	if mmretstr, err = MMRunCommand("--3gpp-scan --timeout=300", time.Minute*6); err == nil {
+	if mmretstr, err = gonmmm.MMRunCommand("--3gpp-scan --timeout=300", time.Minute*6); err == nil {
 		for _, v := range sutils.String2lines(mmretstr) {
 			//				fmt.Println(v)
 			if ret := sregexp.New(`([0-9]+)\s+-\s+([^\s]+)\s+\(([^,]+),\s+([^\s,\)]+)`).FindStringSubmatch(v); len(ret) != 0 {
@@ -468,7 +467,7 @@ func MMGetListNetwork() (retstr map[string][]string, err error) {
 
 	return
 
-	//	retstr, _, err = MMSendAtCommand("+COPS=?")
+	//	retstr, _, err = gonmmm.MMSendAtCommand("+COPS=?")
 	//	if err != nil {
 	//		return retstr, err
 	//	}
@@ -494,7 +493,7 @@ func GetCurrentOperator(dev string) (retstr string, err error) {
 }
 
 func MMGetCurrentOperator() (retstr string, err error) {
-	retstr, err = MMSendAtCommand("+COPS?")
+	retstr, err = gonmmm.MMSendAtCommand("+COPS?")
 	if err != nil {
 		return retstr, err
 	}
@@ -511,7 +510,7 @@ func MMConfigOperator(mccmnc string) (retstr string, err error) {
 	if len(mccmnc) == 0 {
 		mccmnc = "44010"
 	}
-	retstr, err = MMRunCommand("--3gpp-register-in-operator=" + mccmnc)
+	retstr, err = gonmmm.MMRunCommand("--3gpp-register-in-operator=" + mccmnc)
 	if err != nil {
 		return retstr, err
 	}
@@ -586,7 +585,7 @@ done`, vendor, produc)
 }
 
 func MMResetGSM() bool {
-	if _, err := MMRunCommand("-r"); err == nil {
+	if _, err := gonmmm.MMRunCommand("-r"); err == nil {
 		return false
 	} else {
 		return true
@@ -614,23 +613,11 @@ func GetGsmDevice() string {
 	[[ $index ]] && mmcli -m ${index} | grep 'primary port' | grep -m 1 -Poe '[^\s]+$' || { [[ -e "/dev/ttyUSB2" ]] && echo -n "ttyUSB2"; }
 	`
 	if stdout, _, err := sexec.ExecCommandShell(cmd, time.Second*1); err != nil {
-		fmt.Println("Can not get GsnDevice")
+		//		fmt.Println("Can not get GsnDevice")
 	} else {
 		return sutils.StringTrimLeftRightNewlineSpace(string(stdout))
 	}
 
-	return ""
-}
-
-func MMGetGsmIndex() string {
-	cmd := `index=$(mmcli -L | grep -oPe 'org[^\s]+' | grep -Poe '[0-9]+$')
-	[[ $index ]] &&  echo -n "${index}";
-	`
-	if stdout, _, err := sexec.ExecCommandShell(cmd, time.Second*1); err != nil {
-		fmt.Println("Can not get GsmDevice")
-	} else {
-		return sutils.StringTrimLeftRightNewlineSpace(string(stdout))
-	}
 	return ""
 }
 
@@ -651,7 +638,7 @@ func MMGetBearer() string {
 
 func MMGetSimNumber() string {
 	//Numbers  |                  own: 02021977184
-	if stdout, err := MMRunCommand(""); err != nil {
+	if stdout, err := gonmmm.MMRunCommand(""); err != nil {
 		return ""
 	} else {
 		if pnum := sregexp.New(`(?:Numbers.+ )([0-9]+)`).FindStringSubmatch(stdout); len(pnum) == 0 {
@@ -662,7 +649,7 @@ func MMGetSimNumber() string {
 	}
 }
 
-func MMGetNetworkSignalStrength(dev string) (retstr string) {
+func MMGetNetworkSignalStrength() (retstr string) {
 	stats := MMStatsGSM()
 	if sigs := sregexp.New(`signal quality:\s+(0-9)+`).FindStringSubmatch(stats); len(sigs) == 0 {
 		return ""
@@ -678,83 +665,3 @@ func MMGetNetworkSignalStrength(dev string) (retstr string) {
 //			   nmcli con del gsm${devbase} && ngsm=0;
 //			};
 //			((ngsm == 1))`
-func MMConIsExist(conname string) bool {
-	cmd := fmt.Sprintf(`con show %s`, conname)
-	if _, err := NMRunCommand(cmd); err != nil {
-		return false
-	}
-
-	cmd = fmt.Sprintf(`con show`)
-	if stdout, err := NMRunCommand(cmd); err != nil {
-		return false
-	} else {
-		if strslides, err := gogrep.GrepStringLine(stdout, conname, -1, true); err == nil && len(strslides) > 1 {
-			cmd = fmt.Sprintf(`con del %s`, conname)
-			if _, err := NMRunCommand(cmd); err == nil {
-				return false
-			} else {
-				return true
-			}
-		} else {
-			return true
-		}
-	}
-}
-
-func MMRunCommand(cmd string, timeouts ...time.Duration) (stdout string, err error) {
-	timeout := time.Second * 60
-	if len(timeouts) != 0 {
-		timeout = timeouts[0]
-	}
-	index := MMGetGsmIndex()
-	if len(index) == 0 {
-		return "", fmt.Errorf("Cannot found gsm")
-	}
-	if !strings.Contains(cmd, "--command=") {
-		//		cmd = shellwords.Join(cmd)
-	}
-	mmtimeoutsecs := int(timeout / time.Second)
-	cmd = fmt.Sprintf(`mmcli --timeout %d -m %s %s`, mmtimeoutsecs, index, cmd)
-	//	log.Info("MM command: ", cmd)
-
-	stdoutb, stderrb, err1 := sexec.ExecCommandShell(cmd, timeout)
-	if err1 != nil {
-		//		log.Errorf("MMCMD ERROR: [%s]", cmd)
-		err1 = fmt.Errorf("%s", string(stderrb))
-	}
-	return string(stdoutb), err1
-}
-
-func MMSendAtCommand(cmd string, timeouts ...time.Duration) (stdout string, err error) {
-	//	return MMRunCommand(fmt.Sprintf(`--command=%s`, shellwords.Join(cmd)))
-	cmd = fmt.Sprintf(`--command=%s`, shellwords.Join(cmd))
-	//	log.Info("ATcommand to send: ", cmd)
-
-	stdout, err = MMRunCommand(cmd, timeouts...)
-	if err != nil {
-		return
-	}
-
-	if retregex := sregexp.New(`(?s)response:\s+'(.+)'$`).FindStringSubmatch(stdout); len(retregex) != 0 {
-		return sutils.StringTrimLeftRightNewlineSpace(retregex[1]), nil
-	}
-	return
-}
-
-func NMRunCommand(cmd string, timeouts ...time.Duration) (stdout string, err error) {
-	timeout := time.Second * 20
-	if len(timeouts) != 0 {
-		timeout = timeouts[0]
-	}
-	nmtimeoutsecs := int(timeout / time.Second)
-
-	//	cmd = shellwords.Join(cmd)
-	cmd = fmt.Sprintf(`nmcli -w %d %s`, nmtimeoutsecs, cmd)
-	//	log.Info("nmcli comman: ", cmd)
-	stdoutb, stderrb, err1 := sexec.ExecCommandShell(cmd, timeout)
-	if err1 != nil {
-		//		log.Errorf("NMCMD ERROR: [%s]", cmd)
-		err1 = fmt.Errorf("%s", string(stderrb))
-	}
-	return string(stdoutb), err1
-}
