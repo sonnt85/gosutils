@@ -1,13 +1,16 @@
-package crypto
+package endec
 
 import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rand"
+
 	//	"encoding/base64"
+	"encoding/base64"
 	"encoding/hex"
 	"io/ioutil"
+
 	//	"fmt"
 	"io"
 	"os"
@@ -72,4 +75,23 @@ func DecryptFile(filename string, passphrase []byte) (retbytes []byte, err error
 		return retbytes, err
 	}
 	return DecryptHash(data, passphrase)
+}
+
+func StringSimpleEncrypt(input, key string) (output string) {
+	for i := 0; i < len(input); i++ {
+		output += string(input[i] ^ key[i%len(key)])
+	}
+	return base64.StdEncoding.EncodeToString(base64Text, []byte(output))
+}
+
+func StringSimpleDecrypt(input, key string) (output string, err error) {
+	data, err := base64.StdEncoding.DecodeString(input)
+	if err != nil {
+		return "", err
+	}
+
+	for i := 0; i < len(data); i++ {
+		output += string(data[i] ^ key[i%len(key)])
+	}
+	return output, nil
 }
