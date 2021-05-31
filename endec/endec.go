@@ -81,11 +81,19 @@ func StringSimpleEncrypt(input, key string) (output string) {
 	for i := 0; i < len(input); i++ {
 		output += string(input[i] ^ key[i%len(key)])
 	}
-	return base64.StdEncoding.EncodeToString(base64Text, []byte(output))
+	return base64.StdEncoding.EncodeToString([]byte(output))
 }
 
 func StringSimpleDecrypt(input, key string) (output string, err error) {
-	data, err := base64.StdEncoding.DecodeString(input)
+	data := []byte{}
+	for i := 0; i < 2; i++ {
+		data, err = base64.StdEncoding.DecodeString(input)
+		if err == nil {
+			break
+		} else {
+			input = input + "="
+		}
+	}
 	if err != nil {
 		return "", err
 	}

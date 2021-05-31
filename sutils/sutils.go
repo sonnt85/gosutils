@@ -2055,6 +2055,12 @@ func LogInit(logpath string, stdout io.Writer, logLEvel log.Level, autoHiddenLog
 	}
 }
 
+func RandRangeInterger(min, max int) int {
+	mrand.Seed(time.Now().UnixNano())
+	rand := max - min
+	return mrand.Intn(rand) + min
+}
+
 func SleepRandMill(minxms, maxms int) {
 	mrand.Seed(time.Now().UnixNano())
 	randms := maxms - minxms

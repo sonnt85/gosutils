@@ -638,20 +638,15 @@ func MMGetBearer() string {
 
 func MMGetSimNumber() string {
 	//Numbers  |                  own: 02021977184
-	if stdout, err := gonmmm.MMRunCommand(""); err != nil {
+	if pnum := sregexp.New(`(?:Numbers.+ )([0-9]+)`).FindStringSubmatch(MMStatsGSM()); len(pnum) == 0 {
 		return ""
 	} else {
-		if pnum := sregexp.New(`(?:Numbers.+ )([0-9]+)`).FindStringSubmatch(stdout); len(pnum) == 0 {
-			return ""
-		} else {
-			return pnum[1]
-		}
+		return pnum[1]
 	}
 }
 
 func MMGetNetworkSignalStrength() (retstr string) {
-	stats := MMStatsGSM()
-	if sigs := sregexp.New(`signal quality:\s+(0-9)+`).FindStringSubmatch(stats); len(sigs) == 0 {
+	if sigs := sregexp.New(`signal quality:\s+(0-9)+`).FindStringSubmatch(MMStatsGSM()); len(sigs) == 0 {
 		return ""
 	} else {
 		return sigs[1]
