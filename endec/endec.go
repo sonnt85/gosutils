@@ -1,10 +1,14 @@
 package endec
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rand"
+	"fmt"
+	"strings"
 
 	//	"encoding/base64"
 	"encoding/base64"
@@ -81,12 +85,15 @@ func StringSimpleEncrypt(input, key string) (output string) {
 	for i := 0; i < len(input); i++ {
 		output += string(input[i] ^ key[i%len(key)])
 	}
-	return base64.StdEncoding.EncodeToString([]byte(output))
+	output = base64.StdEncoding.EncodeToString([]byte(output))
+	return strings.TrimRight(output, "=")
 }
 
 func StringSimpleDecrypt(input, key string) (output string, err error) {
 	data := []byte{}
-	for i := 0; i < 2; i++ {
+	input = strings.TrimRight(input, "=")
+	for i := 0; i < 3; i++ {
+		fmt.Println("input check: ", input)
 		data, err = base64.StdEncoding.DecodeString(input)
 		if err == nil {
 			break
@@ -102,4 +109,43 @@ func StringSimpleDecrypt(input, key string) (output string, err error) {
 		output += string(data[i] ^ key[i%len(key)])
 	}
 	return output, nil
+}
+
+func StringZip(input []byte) (retstring string, err error) {
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+	if _, err = gz.Write([]byte(input)); err != nil {
+		return
+	}
+	if err = gz.Flush(); err != nil {
+		return
+	}
+	if err = gz.Close(); err != nil {
+		return
+	}
+	retstring = base64.StdEncoding.EncodeToString(b.Bytes())
+	return strings.TrimRight(retstring, "="), nil
+}
+
+func StringUnzip(input string) (data []byte, err error) {
+	input = strings.TrimRight(input, "=")
+	for i := 0; i < 3; i++ {
+		data, err = base64.StdEncoding.DecodeString(input)
+		if err == nil {
+			break
+		} else {
+			input = input + "="
+		}
+	}
+
+	if err != nil {
+		return
+	}
+	rdata := bytes.NewReader(data)
+	if r, err := gzip.NewReader(rdata); err == nil {
+		data, err := ioutil.ReadAll(r)
+		return data, err
+	} else {
+		return data, err
+	}
 }
