@@ -105,7 +105,7 @@ func MMConfigApn(dev, apn, username, password string) (err error) {
 		return err
 	}
 	time.Sleep(time.Second * 10)
-	if err := gonmmm.NMUpCon(fmt.Sprintf(`gsm%s`, dev)); err != nil {
+	if err := gonmmm.NMEnableCon(fmt.Sprintf(`gsm%s`, dev)); err != nil {
 		log.Warn(err.Error())
 	}
 
