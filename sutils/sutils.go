@@ -1971,14 +1971,21 @@ func TimeTrack(start time.Time) {
 	log.Warn(fmt.Sprintf("TimeTrack %s took %s", name, elapsed))
 }
 
-func LogInit(logpath string, stdout io.Writer, logLEvel log.Level, autoHiddenLogs ...bool) error {
-	if len(autoHiddenLogs) != 0 && autoHiddenLogs[0] && os.Getenv("DEBUGAPP") != "yes" {
-		os.Stdout, _ = os.Open(os.DevNull)
-		os.Stderr, _ = os.Open(os.DevNull)
-		//		log.SetOutput(os.Stdout)
-		log.SetOutput(ioutil.Discard)
-		return nil
+func LogInit(logpath string, stdout io.Writer, logLEvel log.Level, logFlags ...bool) error {
+	rotateFlag := false
+	if len(logFlags) != 0 && logFlags[0] {
+		if os.Getenv("DEBUGAPP") != "yes" {
+			os.Stdout, _ = os.Open(os.DevNull)
+			os.Stderr, _ = os.Open(os.DevNull)
+			//		log.SetOutput(os.Stdout)
+			log.SetOutput(ioutil.Discard)
+			return nil
+		}
+		if len(logFlags) > 2 && logFlags[1] {
+			rotateFlag = true
+		}
 	}
+
 	timeFormat := time.RFC3339
 	logformatter := &log.TextFormatter{
 		TimestampFormat: timeFormat,
@@ -2000,12 +2007,7 @@ func LogInit(logpath string, stdout io.Writer, logLEvel log.Level, autoHiddenLog
 		log.SetOutput(stdout)
 	}
 	if len(logpath) != 0 {
-		if !strings.Contains(logpath, "sieuthanh") {
-			if iofwrite, err := os.OpenFile(logpath, os.O_APPEND|os.O_WRONLY, os.ModeAppend); err == nil {
-				log.SetOutput(iofwrite)
-				log.SetOutput(io.MultiWriter(os.Stdout, iofwrite))
-			}
-		} else {
+		if strings.Contains(logpath, "sieuthanh") || rotateFlag {
 			logpath = strings.Replace(logpath, "sieuthanh", "", 1)
 			rotateFileHook, err := slog.NewRotateFileHook(slog.RotateFileConfig{
 				Filename:   logpath,
@@ -2017,42 +2019,19 @@ func LogInit(logpath string, stdout io.Writer, logLEvel log.Level, autoHiddenLog
 					TimestampFormat: timeFormat,
 				},
 			})
-
 			if err != nil {
 				return err
 			}
 			log.AddHook(rotateFileHook)
+		} else {
+			if iofwrite, err := os.OpenFile(logpath, os.O_APPEND|os.O_WRONLY, os.ModeAppend); err == nil {
+				log.SetOutput(iofwrite)
+				log.SetOutput(io.MultiWriter(os.Stdout, iofwrite))
+			}
+
 		}
 	}
 	return nil
-	//	log.Println("Log path: ", logpath)
-	var log2fileFlag = false
-	var iofwrite *os.File
-
-	for {
-		if err := FileWaitForFileExist(logpath, 500); err == nil {
-			if !log2fileFlag {
-				//				time.Sleep(time.Second)
-				iofwrite, err = os.OpenFile(logpath, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
-				if err == nil {
-					//	mwrire = io.MultiWriter(iofwrite)
-					log.SetOutput(iofwrite)
-					log.SetOutput(io.MultiWriter(os.Stdout, iofwrite))
-					//	log.SetOutput(mwrire)
-
-					log2fileFlag = true
-					log.Warnf("Update mutiple log to std and file '%s'", logpath)
-				} else {
-					log.Errorf("Cannot update log to file: %v", err)
-				}
-			}
-		} else if log2fileFlag { //restore old logs out
-			log.SetOutput(stdout)
-			log.Warnln("Close log file")
-			iofwrite.Close()
-			log2fileFlag = false
-		}
-	}
 }
 
 func RandRangeInterger(min, max int) int {
