@@ -7,7 +7,6 @@ import (
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rand"
-	"fmt"
 	"strings"
 
 	//	"encoding/base64"
@@ -93,7 +92,6 @@ func StringSimpleDecrypt(input, key string) (output string, err error) {
 	data := []byte{}
 	input = strings.TrimRight(input, "=")
 	for i := 0; i < 3; i++ {
-		fmt.Println("input check: ", input)
 		data, err = base64.StdEncoding.DecodeString(input)
 		if err == nil {
 			break
