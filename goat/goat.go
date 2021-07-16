@@ -14,6 +14,7 @@ import (
 	"github.com/sonnt85/gosutils/sexec"
 	"github.com/sonnt85/gosutils/sregexp"
 	"github.com/sonnt85/gosutils/sutils"
+	"github.com/sonnt85/gosystem"
 	"github.com/tarm/serial"
 )
 
@@ -83,35 +84,38 @@ func ConfigApn(dev, apn, username, password string) (err error) {
 }
 
 func MMConfigApn(dev, apn, username, password string) (err error) {
-	log.Println("Configure apn for", dev)
-	MMPDPdEL([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
-	if errlist, err := MMSetApn(apn); err != nil {
-		log.Errorf("Can not config apn %s:\n%s\n", apn, errlist)
-		return fmt.Errorf("Can not set apn")
-	}
-	//		nmcli con mod gsm${devbase} ipv4.dns "1.1.1.1 8.8.8.8 208.67.222.222"`,
+	log.Println("Configure apn for ", dev)
+	iface := dev
+	conName := "gsm" + dev
+	//nmcli con mod gsm${devbase} ipv4.dns "1.1.1.1 8.8.8.8 208.67.222.222"`,
 	//nmcli con mod gsm${devbase} ipv4.dns "1.1.1.1"
 	//nmcli connection add type gsm ifname "*" con-name gsmttyUSB2 apn soracom.io user sora password sora
-	iface := dev
-	cmd := fmt.Sprintf(`con del gsm%s`, dev)
-	if stderr, err := gonmmm.NMRunCommand(cmd); err != nil {
-		log.Warnf("Can not delete old gsm connection: %s", stderr)
-	}
 
-	//	iface = `*`
-	cmd = fmt.Sprintf(`connection add type gsm ifname "%s" con-name gsm%s apn "%s" user "%s" password "%s"`, iface, dev, apn, username, password)
-	if stderr, err := gonmmm.NMRunCommand(cmd); err != nil {
-		log.Error("Can not add  gsm connection: ", stderr)
+	if err := gonmmm.NMCreateConnection(conName, iface, "gsm", fmt.Sprintf(`apn "%s" user "%s" password "%s" ipv4.dns 1.1.1.1 connection.autoconnect yes`, apn, username, password)); err != nil {
+		log.Error("Can not add  gsm connection: ", err)
 		return err
 	}
-	time.Sleep(time.Second * 10)
-	if err := gonmmm.NMEnableCon(fmt.Sprintf(`gsm%s`, dev)); err != nil {
+
+	gonmmm.NMConEditFieldIfChange(conName, "gsm.apn", apn)
+	gonmmm.NMConEditFieldIfChange(conName, "gsm.password", password)
+	gonmmm.NMConEditFieldIfChange(conName, "gsm.username", username)
+	gonmmm.NMConEditFieldIfChange(conName, "ipv4.dns", "1.1.1.1")
+
+	if err := gonmmm.NMEnableCon(conName); err != nil {
 		log.Warn(err.Error())
+	}
+	time.Sleep(time.Second * 10)
+	if !MMPDPIsConfigured(apn) {
+		MMPDPdEL([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+		if errlist, err := MMSetApn(apn); err != nil {
+			log.Errorf("Can not config apn %s:\n%s\n", apn, errlist)
+			return fmt.Errorf("Can not set apn")
+		}
 	}
 
 	if false {
 		if bindex := MMGetBearer(); len(bindex) != 0 {
-			if err := MMDeletteBearer(bindex); err != nil {
+			if err := MMDeleteBearer(bindex); err != nil {
 				log.Warnf("Can not delete old  beare %s", err.Error())
 			}
 		}
@@ -120,18 +124,6 @@ func MMConfigApn(dev, apn, username, password string) (err error) {
 			log.Warnf("Can not add new bearer %s", err.Error())
 		}
 		//	MMSimpleConnect(apn, username, password)
-
-		cmd = fmt.Sprintf(`con mod gsm%s ipv4.dns "1.1.1.1"`, dev)
-		if _, err = gonmmm.NMRunCommand(cmd); err != nil {
-			log.Errorf("Can not update dns gsm connection %s", err.Error())
-			return err
-		}
-	}
-
-	cmd = fmt.Sprintf(`con mod gsm%s connection.autoconnect yes`, dev)
-	if _, err = gonmmm.NMRunCommand(cmd); err != nil {
-		log.Errorf("Can not update auto connect for gsm connection %s", err.Error())
-		return err
 	}
 
 	if pdps, err := MMGetPDP(); err == nil {
@@ -213,38 +205,20 @@ func InitModem(dev string) (retstr string, err error) {
 func MMInitModem() (err error) {
 
 	mmservicefile := "/lib/systemd/system/ModemManager.service"
-	lineExecStart := "ExecStart=/usr/sbin/ModemManager --filter-policy=strict --debug --log-level=DEBUG --log-file=/var/log/mm.log"
+	//	lineExecStart := "ExecStart=/usr/sbin/ModemManager --filter-policy=strict --debug --log-level=DEBUG --log-file=/var/log/mm.log"
+	lineExecStart := "ExecStart=/usr/sbin/ModemManager --filter-policy=strict --debug --log-level=DEBUG"
 	pattern := "ExecStart=(.+)"
 	if !gogrep.FileIsMatchLine(mmservicefile, lineExecStart, true) {
 		sutils.FileUpdateOrAdd(mmservicefile, lineExecStart, lineExecStart, pattern, true)
 		sexec.ExecCommand("systemctl", "daemon-reload")
 		sexec.ExecCommand("systemctl", "restart", "ModemManager")
-		time.Sleep(time.Second * 10)
 	}
-	for {
-		if nil == MMAte1() {
-			break
-		}
-		time.Sleep(time.Second * 1)
+	if !gosystem.AppIsActive("ModemManager") {
+		sexec.ExecCommand("systemctl", "start", "ModemManager")
 	}
+	MMAte1()
 	gonmmm.MMSendAtCommand("AT+CFUN=1")
-	MMPDPdEL([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
-	gonmmm.MMSendAtCommand("AT+CFUN=1")
-	//	gosystem.InitSignal(func() { sexec.ExecCommand("systemctl", "start", "ModemManager") })
 	return nil
-	timeoutAt := time.Now().Add(time.Second * 10)
-	for {
-		if time.Now().After(timeoutAt) {
-			break
-		}
-		_, err = gonmmm.MMSendAtCommand("AT+CFUN=1")
-		if err == nil {
-			MMAte0()
-			return
-		}
-		time.Sleep(time.Second * 2)
-	}
-	return err
 }
 
 func SetApn(dev, apn string) (retstr string, err error) {
@@ -275,7 +249,6 @@ func MMPDPdEL(indexs []int) (errindex []int) {
 	for _, v := range indexs {
 		if _, err := gonmmm.MMSendAtCommand(fmt.Sprintf("+CGDCONT=%d", v)); err != nil {
 			errindex = append(errindex, v)
-			//			return
 		}
 	}
 	return
@@ -289,6 +262,7 @@ func MMPDPIsConfigured(apn string) bool { //auto delete empty apn
 		for _, v := range pdps {
 			if v[1] == apn {
 				cnt++
+				return true
 				if cnt == numconfig {
 					return true
 				}
@@ -353,7 +327,7 @@ func MMCreateBearer(apn, username, passowrd string) (err error) {
 	}
 }
 
-func MMDeletteBearer(bindex string) (err error) {
+func MMDeleteBearer(bindex string) (err error) {
 	//	mmcli -m 2 --create-bearer="apn=<APN Address Here>,user=<User Name Here>,password=<Password Here>"
 	mmparas := fmt.Sprintf(`--delete-bearer=%s`, bindex)
 	if _, err := gonmmm.MMRunCommand(mmparas, time.Second*2); err == nil {
@@ -365,7 +339,7 @@ func MMDeletteBearer(bindex string) (err error) {
 
 func MMSimpleConnect(apn, username, passowrd string) (ok bool) {
 	ok = false
-	mmparas := fmt.Sprintf(`--timeout 500 --simple-connect='ip-type=ipv4,apn=%s,user=%s,password=%s'`, apn, username, passowrd)
+	mmparas := fmt.Sprintf(`--simple-connect='ip-type=ipv4,apn=%s,user=%s,password=%s'`, apn, username, passowrd)
 	if _, err := gonmmm.MMRunCommand(mmparas, time.Minute*6); err == nil {
 		return true
 	} else {
@@ -454,7 +428,7 @@ func MMGetListNetwork() (retstr map[string][]string, err error) {
 	//21403 - Orange (umts, forbidden)
 	retstr = make(map[string][]string)
 	mmretstr := ""
-	if mmretstr, err = gonmmm.MMRunCommand("--3gpp-scan --timeout=300", time.Minute*6); err == nil {
+	if mmretstr, err = gonmmm.MMRunCommand("--3gpp-scan", time.Minute*6); err == nil {
 		for _, v := range sutils.String2lines(mmretstr) {
 			//				fmt.Println(v)
 			if ret := sregexp.New(`([0-9]+)\s+-\s+([^\s]+)\s+\(([^,]+),\s+([^\s,\)]+)`).FindStringSubmatch(v); len(ret) != 0 {
@@ -493,15 +467,23 @@ func GetCurrentOperator(dev string) (retstr string, err error) {
 }
 
 func MMGetCurrentOperator() (retstr string, err error) {
-	retstr, err = gonmmm.MMSendAtCommand("+COPS?")
-	if err != nil {
-		return retstr, err
-	}
-	//+COPS: 0,0,"NTT DOCOMO",7
-	if retregex := sregexp.New(`\+COPS:\s+(.+)`).FindStringSubmatch(retstr); len(retregex) != 0 { //onece line
-		return retregex[1], nil
+	if true {
+		if oname := sregexp.New(`operator name:\s+(.+)$`).FindStringSubmatch(MMStatsGSM()); len(oname) == 0 {
+			return "", errors.New("Sim not plugged in or loose")
+		} else {
+			return oname[1], nil
+		}
 	} else {
-		return "", errors.New("Sim not plugged in or loose")
+		retstr, err = gonmmm.MMSendAtCommand("+COPS?")
+		if err != nil {
+			return retstr, err
+		}
+		//+COPS: 0,0,"NTT DOCOMO",7
+		if retregex := sregexp.New(`\+COPS:\s+(.+)`).FindStringSubmatch(retstr); len(retregex) != 0 { //onece line
+			return retregex[1], nil
+		} else {
+			return "", errors.New("Sim not plugged in or loose")
+		}
 	}
 }
 
@@ -535,6 +517,14 @@ func GetEMEI(dev string) (retstr string, err error) {
 		return retregex[1], nil
 	} else {
 		return "", errors.New("Can not get emei")
+	}
+}
+
+func MMGetEMEI() (retstr string, err error) {
+	if emei := sregexp.New(`imei:\s+(.+)$`).FindStringSubmatch(MMStatsGSM()); len(emei) == 0 {
+		return "", errors.New("Can not get EMEI value")
+	} else {
+		return emei[1], nil
 	}
 }
 
@@ -652,11 +642,3 @@ func MMGetNetworkSignalStrength() (retstr string) {
 		return sigs[1]
 	}
 }
-
-//		cmd := `dev=` + devtty + `;
-//			devbase=${dev##*/};
-//			ngsm=$(nmcli con show | grep -e gsm${devbase} | wc -l);
-//			{ ((ngsm > 1)) || nmcli con show | grep -e gsm${devbase} | grep -e "--"; } && {
-//			   nmcli con del gsm${devbase} && ngsm=0;
-//			};
-//			((ngsm == 1))`

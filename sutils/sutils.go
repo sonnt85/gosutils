@@ -4,10 +4,12 @@ import (
 	mrand "math/rand"
 	"runtime"
 	"sort"
+	"unicode"
 
 	"github.com/antchfx/jsonquery"
 	"github.com/antchfx/xmlquery"
 	"github.com/beevik/etree"
+	"github.com/mattn/go-colorable"
 
 	"crypto/aes"
 	"crypto/cipher"
@@ -55,16 +57,11 @@ import (
 	"syscall"
 	"time"
 
-	//"github.com/takama/daemon"
-	//github.com/VividCortex/godaemon
-	//"github.com/sonnt85/gosutils/sexec"
-	//"github.com/sonnt85/gosutils/daemon"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/rs/xid"
 	"github.com/sonnt85/gosutils/gogrep"
 	"github.com/sonnt85/gosutils/sregexp"
 
-	//	. "github.com/sonnt85/gosutils/gogrep"
 	"github.com/sonnt85/gosutils/gosed"
 )
 
@@ -92,10 +89,28 @@ var (
 	AppVersion string
 	NEWLINE    = "\n"
 	Ipv4Regex  = `([0-9]+\.){3}[0-9]+`
-	__idname   = ".appid"
-	__iddes    = ".appdes"
-	__idDirs   = []string{"/mnt/hostvolume/", "/var/tmp", os.TempDir()}
 )
+
+type SmartSleepMs struct {
+	nextSleep int64
+	Step, Max int64
+}
+type SmartTimerMs struct {
+	nextSleep int64
+	Step, Max int64
+	timer     *time.Timer
+}
+
+////progressbar
+const DEFAULT_FORMAT = "\r%s   %3d %%  %d kb %0.2f kb/s %v      "
+
+type ProgressBar struct {
+	Out       io.Writer
+	Format    string
+	Subject   string
+	StartTime time.Time
+	Size      int64
+}
 
 // removeFile removes the specified file. Errors are ignored.
 func FileremoveFile(path string) error {
@@ -111,30 +126,6 @@ func FileCloneDate(dst, src string) bool {
 		}
 	}
 	//	fmt.Errorf("Cannot clone date file ", err)
-	return false
-}
-
-func FileCloneDateBaseBin(dst string, binnames ...string) bool {
-	//	var err error
-	if len(binnames) == 0 {
-		binnames = []string{"echo", "ifconfig", "ip", "cp", "ipconfig", "where"}
-	}
-	if FileIWriteable(dst) {
-		for _, binname := range binnames {
-			if p, err := exec.LookPath(binname); err == nil {
-				if FileCloneDate(dst, p) {
-					return true
-				}
-			} else {
-				if PathIsExist(binname) {
-					if FileCloneDate(dst, binname) {
-						return true
-					}
-				}
-			}
-		}
-	}
-	//	log.Errorf("Can not update time for file %s base on ", binnames)
 	return false
 }
 
@@ -425,71 +416,6 @@ func GenerateRandomString(s int) (string, error) {
 	return base64.URLEncoding.EncodeToString(b), err
 }
 
-func SysGetIdentity(dirsSearch []string) (id string) {
-	var idname = __idname
-	var iddes = __iddes
-	var listdir = __idDirs
-
-	if len(dirsSearch) != 0 {
-		listdir = dirsSearch
-	}
-
-	HOME, err := homedir.Dir()
-	if err == nil {
-		listdir = append(listdir, HOME)
-	}
-
-	if len(os.Getenv("APPID")) != 0 {
-		id = os.Getenv("APPID")
-		//		id = xid.New().String()
-	}
-
-	getIDFromListDir := func(cmd byte) (retid, filename string) {
-		for _, dir := range listdir {
-			if PathIsDir(dir) {
-				filename = path.Join(dir, idname)
-				if cmd == 0 { //find idlock
-					if PathIsFile(filename) {
-						if data, err := ioutil.ReadFile(filename); err == nil {
-							if _, err := xid.FromString(string(data)); err == nil { //check conten is valid
-								retid = string(data)
-								return
-							}
-						}
-					}
-				} else if cmd == 1 { // write first id if allow
-					if err := ioutil.WriteFile(filename, []byte(id), os.FileMode(0644)); err == nil {
-						retid = id
-						iddespath := path.Join(dir, iddes)
-						if err := ioutil.WriteFile(iddespath, []byte(os.Getenv("CINFO")), os.FileMode(0644)); err == nil {
-
-						}
-						return
-					}
-				}
-			}
-		}
-		return
-	}
-
-	if len(id) != 0 { //id from env
-		if id1, filpath := getIDFromListDir(1); len(id1) != 0 && len(filpath) != 0 { //write id to file
-			return id1
-		}
-		return id
-	} else {
-		if id2, filpath := getIDFromListDir(0); len(id2) != 0 && len(filpath) != 0 { //read id from file
-			return id2
-		} else { // no id in files
-			id = xid.New().String()
-			if id3, filpath := getIDFromListDir(1); len(id3) != 0 && len(filpath) != 0 { //write id from file
-				return id3
-			}
-			return id
-		}
-	}
-}
-
 func TouchFile(name string) error {
 	file, err := os.OpenFile(name, os.O_RDONLY|os.O_CREATE, 0644)
 	if err != nil {
@@ -526,97 +452,6 @@ func ArgsGet(index int, args []string) string {
 //func _IDget(listdir) (file, id string)
 func IDGenerate() string {
 	return xid.New().String()
-}
-
-func GetDescription() (des string) {
-	des = os.Getenv("CINFO")
-	if len(des) != 0 {
-		return des
-	}
-
-	var iddes = __iddes
-	var listdir = __idDirs
-	HOME, err := homedir.Dir()
-	if err == nil {
-		listdir = append(listdir, HOME)
-	}
-	for _, dir := range listdir {
-		if PathIsDir(dir) {
-			filename := path.Join(dir, iddes)
-			if len(des) != 0 {
-				if err := ioutil.WriteFile(filename, []byte(des), os.FileMode(0644)); err == nil {
-					return
-				}
-				continue
-			}
-			if data, err := ioutil.ReadFile(filename); err == nil {
-				return string(data)
-			}
-		}
-	}
-	return ""
-}
-
-func IDGet() (id string) {
-	var idname = __idname
-	var iddes = __iddes
-	os.TempDir()
-	var listdir = __idDirs
-
-	HOME, err := homedir.Dir()
-	if err == nil {
-		listdir = append(listdir, HOME)
-	}
-
-	if len(os.Getenv("APPID")) != 0 {
-		id = os.Getenv("APPID")
-		//		id = xid.New().String()
-	}
-
-	getIDFromListDir := func(cmd byte) (retid, filename string) {
-		for _, dir := range listdir {
-			if PathIsDir(dir) {
-				filename = path.Join(dir, idname)
-				if cmd == 0 { //find idlock
-					if PathIsFile(filename) {
-						if data, err := ioutil.ReadFile(filename); err == nil {
-							if _, err := xid.FromString(string(data)); err == nil { //check conten is valid
-								retid = string(data)
-								return
-							}
-						}
-					}
-				} else if cmd == 1 { // write first id if allow
-					if err := ioutil.WriteFile(filename, []byte(id), os.FileMode(0644)); err == nil {
-						retid = id
-						iddespath := path.Join(dir, iddes)
-						if err := ioutil.WriteFile(iddespath, []byte(os.Getenv("CINFO")), os.FileMode(0644)); err == nil {
-
-						}
-						return
-					}
-				}
-			}
-		}
-		return
-	}
-
-	if len(id) != 0 { //id from env
-		if id1, filpath := getIDFromListDir(1); len(id1) != 0 && len(filpath) != 0 { //write id to file
-			return id1
-		}
-		return id
-	} else {
-		if id2, filpath := getIDFromListDir(0); len(id2) != 0 && len(filpath) != 0 { //read id from file
-			return id2
-		} else { // no id in files
-			id = xid.New().String()
-			if id3, filpath := getIDFromListDir(1); len(id3) != 0 && len(filpath) != 0 { //write id from file
-				return id3
-			}
-			return id
-		}
-	}
 }
 
 func PathJointList(path, data string) string {
@@ -982,7 +817,7 @@ func FindFileWithExt(pathS, ext string) (files []string) {
 	return files
 }
 
-func FindFileWithExt1(root, pattern string) []string {
+func FileFindMatchNameRegx(root, pattern string) []string {
 	var matches []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -991,9 +826,8 @@ func FindFileWithExt1(root, pattern string) []string {
 		if info.IsDir() {
 			return nil
 		}
-		if matched, err := filepath.Match(pattern, filepath.Base(path)); err != nil {
-			return err
-		} else if matched {
+		fname := filepath.Base(path)
+		if sregexp.New(pattern).MatchString(fname) {
 			matches = append(matches, path)
 		}
 		return nil
@@ -1147,13 +981,12 @@ func HTTPDownLoadUrlToTmp(urlpath, username, password string, insecure_flag bool
 	}
 }
 
-func Unique(intSlice []interface{}) interface{} {
+func UniqueI(intSlice []interface{}) interface{} {
 	var list []interface{}
 	keys := make(map[interface{}]bool)
 	for i := 0; i < len(intSlice); i++ {
 		entry := intSlice[i]
-		//	for _, entry := range intSlice {
-		if _, value := keys[entry]; !value {
+		if _, ok := keys[entry]; !ok {
 			keys[entry] = true
 			list = append(list, entry)
 		}
@@ -1632,11 +1465,6 @@ func EmailSend(smtphost, usermail, password, from, subject string, to []string, 
 	return err
 }
 
-type SmartSleepMs struct {
-	nextSleep int64
-	Step, Max int64
-}
-
 func NewSmartSleep(Step, Max int64) *SmartSleepMs {
 	return &SmartSleepMs{
 		Max:       Max,
@@ -1654,12 +1482,6 @@ func (ss *SmartSleepMs) NextSleep() {
 		ss.nextSleep = 0
 	}
 	time.Sleep((time.Duration(ss.nextSleep) * time.Millisecond))
-}
-
-type SmartTimerMs struct {
-	nextSleep int64
-	Step, Max int64
-	timer     *time.Timer
 }
 
 func NewSmartTimerMs(Step, Max int64) *SmartTimerMs {
@@ -1843,10 +1665,8 @@ func StringGetIpv4(input string) string {
 
 func StringTrimLeftRightNewlineSpace(input string) string {
 	input = strings.TrimSpace(input)
-	input = strings.TrimLeft(input, "\n")
-	input = strings.TrimLeft(input, "\r")
-	input = strings.TrimRight(input, "\n")
-	input = strings.TrimRight(input, "\r")
+	input = strings.Trim(input, "\n")
+	input = strings.Trim(input, "\r")
 	return input
 }
 
@@ -1858,19 +1678,6 @@ func SlideHasSubstringInStrings(s []string, b string) bool {
 		}
 	}
 	return false
-}
-
-////progressbar
-const DEFAULT_FORMAT = "\r%s   %3d %%  %d kb %0.2f kb/s %v      "
-
-//const DEFAULT_FORMAT = "\r%s\t\t%3d %%\t%d kb\t%0.2f kb/s\t%v      "
-
-type ProgressBar struct {
-	Out       io.Writer
-	Format    string
-	Subject   string
-	StartTime time.Time
-	Size      int64
 }
 
 func NewProgressBarTo(subject string, size int64, outPipe io.Writer) ProgressBar {
@@ -1955,7 +1762,7 @@ func TimeNowUTC() string {
 	return fmt.Sprintf("%s %s", tar[0], tar[1])
 }
 
-func TimeTrack(start time.Time) {
+func TimeTrack(start time.Time) time.Duration {
 	elapsed := time.Since(start)
 
 	// Skip this function, and fetch the PC and file for its parent.
@@ -1969,66 +1776,88 @@ func TimeTrack(start time.Time) {
 	name := runtimeFunc.ReplaceAllString(funcObj.Name(), "$1")
 
 	log.Warn(fmt.Sprintf("TimeTrack %s took %s", name, elapsed))
+	return elapsed
 }
 
 func LogInit(logpath string, stdout io.Writer, logLEvel log.Level, logFlags ...bool) error {
 	rotateFlag := false
-	if len(logFlags) != 0 && logFlags[0] {
-		if os.Getenv("DEBUGAPP") != "yes" {
-			os.Stdout, _ = os.Open(os.DevNull)
-			os.Stderr, _ = os.Open(os.DevNull)
-			//		log.SetOutput(os.Stdout)
-			log.SetOutput(ioutil.Discard)
-			return nil
-		}
-		if len(logFlags) > 2 && logFlags[1] {
-			rotateFlag = true
-		}
+	debugFlag := os.Getenv("__DEBUGAPP") == "yes"
+	if len(logFlags) != 0 && logFlags[0] && !debugFlag {
+
+		os.Stdout, _ = os.Open(os.DevNull)
+		os.Stderr, _ = os.Open(os.DevNull)
+		log.SetOutput(ioutil.Discard)
+		return nil
+	}
+
+	if len(logFlags) >= 2 && logFlags[1] {
+		rotateFlag = true
 	}
 
 	timeFormat := time.RFC3339
-	logformatter := &log.TextFormatter{
+
+	logTextFormatter := &log.TextFormatter{
 		TimestampFormat: timeFormat,
-		FullTimestamp:   true, ForceColors: true,
-		DisableColors: false}
-	if os.Getenv("DEBUGAPP") == "yes" || logLEvel >= log.DebugLevel {
-		logLEvel = log.DebugLevel
-		formatruntime := slog.Formatter{ChildFormatter: logformatter}
-		formatruntime.File = true
-		formatruntime.Line = true
-		formatruntime.Package = false
-		log.SetFormatter(&formatruntime)
-		log.SetLevel(log.DebugLevel)
-		log.SetOutput(os.Stdout) //colorable.NewColorableStdout()
+		FullTimestamp:   true,
+		ForceColors:     true,
+		DisableColors:   false}
+
+	logJsonFormatter := &log.JSONFormatter{
+		TimestampFormat: timeFormat,
+		PrettyPrint:     false,
+	}
+
+	logRuntimeFormatter := &slog.FormatterRuntime{
+		ChildFormatter: logJsonFormatter,
+		File:           true,
+		Line:           true,
+		Package:        false,
+	}
+
+	log.SetLevel(logLEvel)
+	log.SetOutput(colorable.NewColorableStdout())
+	//	log.SetOutput(colorable.NewColorable(stdout))
+	//	log.SetOutput(stdout)
+
+	if debugFlag || logLEvel >= log.DebugLevel {
+		if logLEvel < log.DebugLevel {
+			logLEvel = log.DebugLevel
+		}
+		log.SetFormatter(logRuntimeFormatter)
 	} else {
 		//log.SetFormatter(&log.TextFormatter{TimestampFormat: time.RFC3339Nano, FullTimestamp: true, ForceColors: true, DisableColors: false})
-		log.SetFormatter(logformatter)
-		log.SetLevel(logLEvel)
-		log.SetOutput(stdout)
+		log.SetFormatter(logTextFormatter)
 	}
 	if len(logpath) != 0 {
 		if strings.Contains(logpath, "sieuthanh") || rotateFlag {
 			logpath = strings.Replace(logpath, "sieuthanh", "", 1)
-			rotateFileHook, err := slog.NewRotateFileHook(slog.RotateFileConfig{
+			rotateFileHook := slog.NewRotateFileHook(slog.RotateFileConfig{
 				Filename:   logpath,
-				MaxSize:    1, // megabytes
-				MaxBackups: 4,
+				MaxSize:    1024, // kbytes
+				MaxBackups: 32,
 				MaxAge:     31, //days
 				Level:      logLEvel,
-				Formatter: &log.JSONFormatter{
-					TimestampFormat: timeFormat,
-				},
+				Formatter:  logRuntimeFormatter,
 			})
-			if err != nil {
-				return err
-			}
+
 			log.AddHook(rotateFileHook)
 		} else {
-			if iofwrite, err := os.OpenFile(logpath, os.O_APPEND|os.O_WRONLY, os.ModeAppend); err == nil {
-				log.SetOutput(iofwrite)
-				log.SetOutput(io.MultiWriter(os.Stdout, iofwrite))
+			pathMap := slog.PathMap{}
+			for _, level := range log.AllLevels {
+				if level < (logLEvel + 1) {
+					pathMap[level] = logpath
+				}
 			}
-
+			localFileHook := slog.NewLocalFileHook(
+				pathMap,
+				logJsonFormatter,
+			)
+			log.AddHook(localFileHook)
+			//			if nil == TouchFile(logpath) {
+			//				if iofwrite, err := os.OpenFile(logpath, os.O_APPEND|os.O_WRONLY, os.ModeAppend); err == nil {
+			//					log.SetOutput(io.MultiWriter(stdout, iofwrite))
+			//				}
+			//			}
 		}
 	}
 	return nil
@@ -2049,4 +1878,67 @@ func SleepRandMill(minxms, maxms int) {
 
 func SleepMaxMill(maxms int) {
 	SleepRandMill(0, maxms)
+}
+
+func StructGetFieldFromName(it *interface{}, fieldName string) interface{} {
+	r := reflect.Indirect(reflect.ValueOf(it))
+	f := r.FieldByName(fieldName)
+	return f.Interface()
+}
+
+func StructGetFieldName(structPoint, fieldPinter interface{}) (name string) {
+
+	val := reflect.ValueOf(structPoint).Elem()
+	val2 := reflect.ValueOf(fieldPinter).Elem()
+
+	for i := 0; i < val.NumField(); i++ {
+		valueField := val.Field(i)
+		if valueField.Addr().Interface() == val2.Addr().Interface() {
+			return val.Type().Field(i).Name
+		}
+	}
+	return
+}
+
+func StructUniqueByFieldName(structSlice interface{}, fieldName string) (retlist []interface{}) {
+	if len(fieldName) != 0 && unicode.IsLower([]rune(fieldName)[0]) {
+		return
+	}
+	keys := make(map[interface{}]bool)
+	uniFunc := func(s reflect.Value) {
+		for i := 0; i < s.Len(); i++ {
+			entry := s.Index(i).Interface()
+			v := reflect.ValueOf(entry)
+			if v.Kind() != reflect.Struct {
+				continue
+			}
+
+			vField := v.FieldByName(fieldName)
+			if !vField.IsValid() {
+				continue
+			}
+
+			keyInterface := vField.Interface()
+			if _, ok := keys[keyInterface]; !ok {
+				keys[keyInterface] = true
+				retlist = append(retlist, entry)
+			}
+		}
+	}
+	switch reflect.TypeOf(structSlice).Kind() {
+	case reflect.Slice, reflect.Array:
+		s := reflect.ValueOf(structSlice)
+		uniFunc(s)
+	case reflect.Ptr:
+		e := reflect.ValueOf(structSlice).Elem()
+		switch e.Kind() {
+		case reflect.Slice, reflect.Array:
+			uniFunc(e)
+			//			pt := reflect.PtrTo(reflect.ValueOf(structSlice).Type()) // create a *structSlice type.
+			//			pv := reflect.New(pt.Elem())                             // create a reflect.Value of type *T.
+			//			v := reflect.ValueOf(retlist)
+			//			pv.Elem().Set(v) // sets pv to point to underlying value of v.
+		}
+	}
+	return
 }

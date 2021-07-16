@@ -15,12 +15,6 @@ type BasicAuth struct {
 	Password string
 }
 
-type DigestAuth struct {
-	*DigestTransport
-	//	Username string
-	//	Password string
-}
-
 type TokenAuth struct {
 	Token string
 }
@@ -34,8 +28,14 @@ func (a *TokenAuth) HeaderValue() string {
 	return "token " + a.Token
 }
 
+type DigestAuth struct {
+	*DigestTransport
+	//	Username string
+	//	Password string
+}
+
 func (a *DigestAuth) NewDigestTranport() *DigestTransport {
-	return NewTransport(a.Username, a.Password)
+	return NewDigestTransport(a.Username, a.Password)
 }
 
 func applyAuth(r *Request) bool {
@@ -56,10 +56,10 @@ func applyAuth(r *Request) bool {
 	case string: //req.Auth = "string"
 		r.Headers["Authorization"] = v
 	case DigestAuth:
-		a := r.Auth.(DigestAuth)
-		a.NewDigestTranport()
-		//		t := dac.NewTransport(a.Username, a.Password)
-		//		r.
+		//da := r.Auth.(DigestAuth)
+		//t := da.NewDigestTranport()
+		//t := dac.NewTransport(a.Username, a.Password)
+		//r.Client.Transport
 
 	default:
 		log.Info("Authen type", v)

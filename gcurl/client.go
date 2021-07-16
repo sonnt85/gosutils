@@ -21,18 +21,17 @@ type ConnectionOption struct {
 }
 
 func NewClient(option *ConnectionOption) (*http.Client, error) {
-	if option == nil {
-		return new(http.Client), nil
-	}
-
 	transport := newTransport(option)
-	if option.ProxyURL != "" {
+	if option == nil {
+		option = new(ConnectionOption)
+		option.RequestTimeout = 30 * time.Second
+	}
+	if len(option.ProxyURL) != 0 {
 		err := setProxyTransport(transport, option.ProxyURL)
 		if err != nil {
 			return nil, err
 		}
 	}
-
 	client := &http.Client{
 		Timeout:   option.RequestTimeout,
 		Transport: transport,
@@ -46,6 +45,21 @@ func NewClient(option *ConnectionOption) (*http.Client, error) {
 }
 
 func newTransport(option *ConnectionOption) *http.Transport {
+	if option == nil {
+		return NewDefaultTransPort()
+	}
+	if option.DialKeepAlive == 0 {
+		option.DialKeepAlive = 15 * time.Second
+	}
+
+	if option.DialTimeout == 0 {
+		option.DialTimeout = 30 * time.Second
+	}
+
+	if option.TLSHandshakeTimeout == 0 {
+		option.TLSHandshakeTimeout = 6 * time.Second
+	}
+
 	return &http.Transport{
 		Dial: (&net.Dialer{
 			Timeout:   option.DialTimeout,
@@ -80,4 +94,32 @@ func setProxyTransport(transport *http.Transport, proxyURL string) error {
 
 func disableRedirect(req *http.Request, via []*http.Request) error {
 	return http.ErrUseLastResponse
+}
+
+func NewDefaultTransPort() *http.Transport {
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 15 * time.Second,
+			DualStack: true,
+		}).DialContext,
+		ForceAttemptHTTP2:   true,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		IdleConnTimeout:     30 * time.Second,
+		TLSHandshakeTimeout: 6 * time.Second,
+		//		ExpectContinueTimeout:  1 * time.Second,
+		MaxResponseHeaderBytes: 8192,
+		ResponseHeaderTimeout:  time.Millisecond * 5000,
+		DisableKeepAlives:      false,
+	}
+}
+
+func ClientFlushDefaultClient() {
+	http.DefaultClient.CloseIdleConnections()
+}
+
+func ClientResetDefaultTransport() {
+	http.DefaultTransport = NewDefaultTransPort()
 }

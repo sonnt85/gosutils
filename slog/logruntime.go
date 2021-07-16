@@ -27,7 +27,7 @@ const (
 )
 
 // Formatter decorates log entries with function name and package name (optional) and line number (optional)
-type Formatter struct {
+type FormatterRuntime struct {
 	ChildFormatter logrus.Formatter
 	// When true, line number will be tagged to fields as well
 	Line bool
@@ -40,7 +40,7 @@ type Formatter struct {
 }
 
 // Format the current log entry by adding the function name and line number of the caller.
-func (f *Formatter) Format(entry *logrus.Entry) ([]byte, error) {
+func (f *FormatterRuntime) Format(entry *logrus.Entry) ([]byte, error) {
 	function, file, line := f.getCurrentPosition(entry)
 
 	packageEnd := strings.LastIndex(function, ".")
@@ -69,7 +69,7 @@ func (f *Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	return f.ChildFormatter.Format(entry)
 }
 
-func (f *Formatter) getCurrentPosition(entry *logrus.Entry) (string, string, string) {
+func (f *FormatterRuntime) getCurrentPosition(entry *logrus.Entry) (string, string, string) {
 	skip := logrusStackJump
 	if len(entry.Data) == 0 {
 		skip = logrusFieldlessStackJump

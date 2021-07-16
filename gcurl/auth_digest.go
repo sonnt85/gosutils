@@ -78,7 +78,7 @@ func NewDigestRequest(username, password, method, uri, body string) DigestReques
 }
 
 // NewTransport creates a new DigestTransport object
-func NewTransport(username, password string) *DigestTransport {
+func NewDigestTransport(username, password string) *DigestTransport {
 	dt := DigestTransport{}
 	dt.Password = password
 	dt.Username = username
