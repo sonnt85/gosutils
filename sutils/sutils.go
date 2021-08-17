@@ -875,7 +875,7 @@ func FindFile(pathS string) (files []string) {
 	}
 
 	filepath.Walk(pathS, func(path string, f os.FileInfo, _ error) error {
-		if !f.IsDir() {
+		if f != nil && !f.IsDir() {
 			files = append(files, path)
 		}
 		return nil
@@ -1145,6 +1145,11 @@ func XmlGetPathNode(node *xmlquery.Node) string {
 	}
 
 	return retstr
+}
+
+func StringIsXml(input *string) bool {
+	_, err := xmlquery.Parse(strings.NewReader(*input))
+	return err == nil
 }
 
 func XmlStringFindElements(strxml *string, pathSearch string) (map[string]string, error) {

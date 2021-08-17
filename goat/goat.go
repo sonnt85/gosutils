@@ -566,7 +566,8 @@ for DIR in $(find /sys/bus/usb/devices/ -maxdepth 1 -type l); do
     sleep 0.5
     echo 1 > $DIR/authorized
   fi
-done`, vendor, produc)
+done
+usb_modeswitch -v $PRODUCT -p $VENDOR -J`, vendor, produc)
 	if _, _, err := sexec.ExecCommandShell(cmd, time.Second*1); err != nil {
 		fmt.Println("Can not restart USB LTE")
 		return false
