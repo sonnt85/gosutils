@@ -63,7 +63,7 @@ the `ssh_config` manpage. Unimplemented features should be present in the
 
 Notably, the `Match` directive is currently unsupported.
 
-[issues]: https://github.com/sonnt85/goutils/ssh_config/issues
+[issues]: https://github.com/sonnt85/gosutils/ssh_config/issues
 
 ## Errata
 

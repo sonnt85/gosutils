@@ -1,7 +1,7 @@
 package shellwords
 
 import (
-	"github.com/sonnt85/goutils/shellwords"
+	"github.com/sonnt85/gosutils/shellwords"
 	"go/build"
 	"os"
 	"os/exec"

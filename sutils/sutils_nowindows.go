@@ -3,22 +3,28 @@
 package sutils
 
 import (
+	"fmt"
 	"os"
 	"syscall"
 
 	dbus "github.com/godbus/dbus"
-	//	dbus "github.com/guelfey/go.dbus"
 )
+
+const dbusisnil = "dbus opject is nil"
 
 // dbusCall calls a D-Bus method that has no return value.
 func DbusCall(bus *dbus.Object, path string) error {
-	//	log.WithFields(log.Fields{"path": path}).Debug("omxplayer: dbus call")
+	if bus == nil {
+		return fmt.Errorf(dbusisnil)
+	}
 	return bus.Call(path, 0).Err
 }
 
 // dbusGetBool calls a D-Bus method that will return a boolean value.
 func DbusGetBool(bus *dbus.Object, path string) (bool, error) {
-	//	log.WithFields(log.Fields{"path": path}).Debug("omxplayer: dbus call")
+	if bus == nil {
+		return false, fmt.Errorf(dbusisnil)
+	}
 	call := bus.Call(path, 0)
 	if call.Err != nil {
 		return false, call.Err
@@ -28,7 +34,9 @@ func DbusGetBool(bus *dbus.Object, path string) (bool, error) {
 
 // dbusGetFloat64 calls a D-Bus method that will return an int64 value.
 func DbusGetFloat64(bus *dbus.Object, path string) (float64, error) {
-	//	log.WithFields(log.Fields{"path": path}).Debug("omxplayer: dbus call")
+	if bus == nil {
+		return 0, fmt.Errorf(dbusisnil)
+	}
 	call := bus.Call(path, 0)
 	if call.Err != nil {
 		return 0, call.Err
@@ -38,7 +46,9 @@ func DbusGetFloat64(bus *dbus.Object, path string) (float64, error) {
 
 // dbusGetInt64 calls a D-Bus method that will return an int64 value.
 func DbusGetInt64(bus *dbus.Object, path string) (int64, error) {
-	//	log.WithFields(log.Fields{"path": path}).Debug("omxplayer: dbus call")
+	if bus == nil {
+		return 0, fmt.Errorf(dbusisnil)
+	}
 	call := bus.Call(path, 0)
 	if call.Err != nil {
 		return 0, call.Err
@@ -48,7 +58,9 @@ func DbusGetInt64(bus *dbus.Object, path string) (int64, error) {
 
 // dbusGetString calls a D-Bus method that will return a string value.
 func DbusGetString(bus *dbus.Object, path string) (string, error) {
-	//	log.WithFields(log.Fields{"path": path}).Debug("omxplayer: dbus call")
+	if bus == nil {
+		return "", fmt.Errorf(dbusisnil)
+	}
 	call := bus.Call(path, 0)
 	if call.Err != nil {
 		return "", call.Err
@@ -58,7 +70,9 @@ func DbusGetString(bus *dbus.Object, path string) (string, error) {
 
 // dbusGetStringArray calls a D-Bus method that will return a string array.
 func DbusGetStringArray(bus *dbus.Object, path string) ([]string, error) {
-	//	log.WithFields(log.Fields{"path": path}).Debug("omxplayer: dbus call")
+	if bus == nil {
+		return []string{}, fmt.Errorf(dbusisnil)
+	}
 	call := bus.Call(path, 0)
 	if call.Err != nil {
 		return nil, call.Err
@@ -70,11 +84,9 @@ func DirIsWritable(path string) (isWritable bool) {
 	isWritable = false
 	info, err := os.Stat(path)
 	if err != nil {
-		//		fmt.Println("Path doesn't exist")
 		return
 	}
 	if !info.IsDir() {
-		//		fmt.Println("Path isn't a directory")
 		return
 	}
 
@@ -91,7 +103,7 @@ func DirIsWritable(path string) (isWritable bool) {
 
 	if uint32(os.Geteuid()) != stat.Uid {
 		isWritable = false
-		//			fmt.Println("User doesn't have permission to write to this directory")
+		//fmt.Println("User doesn't have permission to write to this directory")
 		return
 	}
 	isWritable = true
@@ -102,13 +114,7 @@ func FileIWriteable(path string) (isWritable bool) {
 	isWritable = false
 	err := syscall.Access(path, syscall.O_RDWR)
 	if err != nil {
-		// fmt.Println(err.Error())
 		return
 	}
-	//	fmt.Println("access ok")
-	return true
-}
-
-func IsDoubleClickRun() bool {
 	return true
 }
