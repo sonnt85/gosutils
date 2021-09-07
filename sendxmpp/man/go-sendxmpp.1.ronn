@@ -63,7 +63,7 @@ Written by Martin Dosch.
 ## REPORTING BUGS
 
 
-Report bugs at https://salsa.debian.org/mdosch/go-sendxmpp/issues
+Report bugs at https://github.com/sonnt85/gosutils/sendxmpp/issues
 
 ## COPYRIGHT
 

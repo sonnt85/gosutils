@@ -15,8 +15,8 @@ If you have *[GOPATH](https://github.com/golang/go/wiki/SettingGOPATH)*
 set just run this commands:
 
 ```plain
-$ go get salsa.debian.org/mdosch/go-sendxmpp
-$ go install salsa.debian.org/mdosch/go-sendxmpp
+$ go get github.com/sonnt85/gosutils/sendxmpp
+$ go install github.com/sonnt85/gosutils/sendxmpp
 ```
 
 You will find the binary in `$GOPATH/bin` or, if set, `$GOBIN`.
