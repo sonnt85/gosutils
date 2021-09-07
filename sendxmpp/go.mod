@@ -1,4 +1,4 @@
-module salsa.debian.org/mdosch/go-sendxmpp
+module github.com/sonnt85/gosutils/sendxmpp
 
 go 1.13
 
