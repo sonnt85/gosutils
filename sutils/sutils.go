@@ -1159,7 +1159,6 @@ func XmlStringFindElements(strxml *string, pathSearch string) (map[string]string
 		//		fmt.Println("xmlquery.Parse:", err)
 		return retmap, err
 	}
-
 	nodes, err := xmlquery.QueryAll(doc, pathSearch)
 	if err != nil {
 		return retmap, err
