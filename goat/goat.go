@@ -91,6 +91,11 @@ func MMConfigApn(dev, apn, username, password string) (err error) {
 	//nmcli con mod gsm${devbase} ipv4.dns "1.1.1.1"
 	//nmcli connection add type gsm ifname "*" con-name gsmttyUSB2 apn soracom.io user sora password sora
 
+	if username == "" && gonmmm.NMConIsExist(conName) && gonmmm.NMConGetField(conName, "gsm.password") != "" {
+		log.Warnf(`Delete old gsm connections "%s" "%s"`, conName, gonmmm.NMConGetField(conName, "gsm.password"))
+		gonmmm.NMDelCon(conName)
+	}
+
 	if err := gonmmm.NMCreateConnection(conName, iface, "gsm", fmt.Sprintf(`apn "%s" user "%s" password "%s" ipv4.dns 1.1.1.1 connection.autoconnect yes`, apn, username, password)); err != nil {
 		log.Error("Can not add  gsm connection: ", err)
 		return err
@@ -101,10 +106,14 @@ func MMConfigApn(dev, apn, username, password string) (err error) {
 	gonmmm.NMConEditFieldIfChange(conName, "gsm.username", username)
 	gonmmm.NMConEditFieldIfChange(conName, "ipv4.dns", "1.1.1.1")
 
-	if err := gonmmm.NMEnableCon(conName); err != nil {
-		log.Warn(err.Error())
+	if err := gonmmm.NMEnableCon(conName); err == nil {
+		return nil
+	} else {
+		// log.Warn(err.Error())
+		return err
 	}
 	time.Sleep(time.Second * 10)
+
 	if !MMPDPIsConfigured(apn) {
 		MMPDPdEL([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
 		if errlist, err := MMSetApn(apn); err != nil {
@@ -428,7 +437,7 @@ func MMGetListNetwork() (retstr map[string][]string, err error) {
 	//21403 - Orange (umts, forbidden)
 	retstr = make(map[string][]string)
 	mmretstr := ""
-	if mmretstr, err = gonmmm.MMRunCommand("--3gpp-scan", time.Minute*6); err == nil {
+	if mmretstr, err = gonmmm.MMRunCommand("--3gpp-scan", time.Minute*5); err == nil {
 		for _, v := range sutils.String2lines(mmretstr) {
 			//				fmt.Println(v)
 			if ret := sregexp.New(`([0-9]+)\s+-\s+([^\s]+)\s+\(([^,]+),\s+([^\s,\)]+)`).FindStringSubmatch(v); len(ret) != 0 {
@@ -539,7 +548,7 @@ func GetNetworkSignalStrength(dev string) (retstr string, err error) {
 	}
 }
 
-func ResetGSMUsb(vendor, produc string) bool {
+func GmsIsPlug(vendor, produc string) bool {
 	cmd := fmt.Sprintf(`
 #set -euo pipefail
 IFS=$'\n\t'
@@ -554,11 +563,48 @@ PRODUCT="%s"
 [[ $vp ]] && {
    VENDOR=${vp%:*}
    PRODUCT=${vp#*:}
+   exit 0
+} || {
+   echo "Cannot find USB"
+   exit 1
+}`, vendor, produc)
+	if _, _, err := sexec.ExecCommandShell(cmd, time.Second*1); err != nil {
+		return false
+	}
+	return true
+}
+
+func ResetGSMUsb(vendor, produc string) bool {
+	cmd := fmt.Sprintf(`
+#set -euo pipefail
+IFS=$'\n\t'
+VENDOR="%s"
+PRODUCT="%s"
+{ [[ $VENDOR ]] || [[ $PRODUCT ]]; }  && {
+   vp=$(lsusb | grep -m 1 -ie ${VENDOR}:${PRODUCT} | awk '{print $6}')
+}
+[[ $vp ]] || {
+   vp=$(lsusb | grep -m 1 -ie 'Huawei' -e 'Modem/Networkcard' | awk '{print $6}')
+}
+[[ $vp ]] && {
+   VENDOR=${vp%:*}
+   PRODUCT=${vp#*:}
 } || {
    echo "Cannot find USB"
    exit 0
 }
 
+#udevadm control --reload-rules
+lsusb | grep "$VENDOR:$PRODUCT" | grep -ie 'Mass Storage Mode' &&  {
+	usb_modeswitch -p $PRODUCT -v $VENDOR -J;
+	true
+} || {
+    udevadm trigger --attr-match="idVendor=${VENDOR}" --attr-match="idProduct=${PRODUCT}"
+}
+
+exit 0
+
+#reset usb
 for DIR in $(find /sys/bus/usb/devices/ -maxdepth 1 -type l); do
   if [[ -f $DIR/idVendor && -f $DIR/idProduct &&
         $(cat $DIR/idVendor) == $VENDOR && $(cat $DIR/idProduct) == $PRODUCT ]]; then
@@ -567,7 +613,10 @@ for DIR in $(find /sys/bus/usb/devices/ -maxdepth 1 -type l); do
     echo 1 > $DIR/authorized
   fi
 done
-usb_modeswitch -v $PRODUCT -p $VENDOR -J`, vendor, produc)
+sleep 5
+#swich usb networkcard mode
+#usb_modeswitch -p $PRODUCT -v $VENDOR -H
+usb_modeswitch -p $PRODUCT -v $VENDOR -J`, vendor, produc)
 	if _, _, err := sexec.ExecCommandShell(cmd, time.Second*1); err != nil {
 		fmt.Println("Can not restart USB LTE")
 		return false
@@ -601,7 +650,8 @@ var _soracom_operator_list = []string{"docomo", "kddi", "softbank"}
 
 func GetGsmDevice() string {
 	cmd := `index=$(mmcli -L | grep -oPe 'org[^\s]+' | grep -Poe '[0-9]+$')
-	[[ $index ]] && mmcli -m ${index} | grep 'primary port' | grep -m 1 -Poe '[^\s]+$' || { [[ -e "/dev/ttyUSB2" ]] && echo -n "ttyUSB2"; }
+	gsmDev=$([[ $index ]] && mmcli -m ${index} | grep 'primary port' | grep -m 1 -Poe '[^\s]+$' || { [[ -e "/dev/ttyUSB2" ]] && echo -n "ttyUSB2"; })
+	[[ $gsmDev ]] && echo -n "${gsmDev}" || { lsusb | grep -q -m 1 -ie 'Huawei' -e Modem -e Networkcard && echo -n "ttyUSB2"; }
 	`
 	if stdout, _, err := sexec.ExecCommandShell(cmd, time.Second*1); err != nil {
 		//		fmt.Println("Can not get GsnDevice")
@@ -629,7 +679,7 @@ func MMGetBearer() string {
 
 func MMGetSimNumber() string {
 	//Numbers  |                  own: 02021977184
-	if pnum := sregexp.New(`(?:Numbers.+ )([0-9]+)`).FindStringSubmatch(MMStatsGSM()); len(pnum) == 0 {
+	if pnum := sregexp.New(`(?:Numbers.+ )(\+?[0-9]+)`).FindStringSubmatch(MMStatsGSM()); len(pnum) == 0 {
 		return ""
 	} else {
 		return pnum[1]
@@ -637,7 +687,7 @@ func MMGetSimNumber() string {
 }
 
 func MMGetNetworkSignalStrength() (retstr string) {
-	if sigs := sregexp.New(`signal quality:\s+(0-9)+`).FindStringSubmatch(MMStatsGSM()); len(sigs) == 0 {
+	if sigs := sregexp.New(`signal quality:\s+([0-9]+)`).FindStringSubmatch(MMStatsGSM()); len(sigs) == 0 {
 		return ""
 	} else {
 		return sigs[1]
