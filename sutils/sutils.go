@@ -1,15 +1,16 @@
 package sutils
 
 import (
+	"context"
 	mrand "math/rand"
 	"runtime"
 	"sort"
-	"unicode"
 
 	"github.com/antchfx/jsonquery"
 	"github.com/antchfx/xmlquery"
 	"github.com/beevik/etree"
 	"github.com/mattn/go-colorable"
+	"gopkg.in/tucnak/telebot.v3"
 
 	"crypto/aes"
 	"crypto/cipher"
@@ -1167,8 +1168,11 @@ func XmlStringFindElements(strxml *string, pathSearch string) (map[string]string
 	//	fmt.Println("scan nodes", err)
 	id := 0
 	//	numnodes := len(nodes)
+	nodesText := ""
 	for k := 0; k < len(nodes); k++ {
 		v := nodes[k]
+		nodesText += v.InnerText()
+
 		//	for k, v := range nodes {
 		key := XmlGetPathNode(v)
 		//		fmt.Println("key:", key)
@@ -1207,7 +1211,7 @@ func XmlStringFindElements(strxml *string, pathSearch string) (map[string]string
 		//		fmt.Println("retmap", retmap)
 		return retmap, nil
 	} else {
-		return retmap, errors.New("Can not found")
+		return retmap, fmt.Errorf(`can not found from respone: %s`, nodesText)
 	}
 }
 
@@ -1703,63 +1707,6 @@ func (pb ProgressBar) Update(tot int64) {
 	fmt.Fprintf(pb.Out, pb.Format, pb.Subject, percent, tot, spd, totTime)
 }
 
-// Reflect if an interface is either a struct or a pointer to a struct
-// and has the defined member method. If error is nil, it means
-// the MethodName is accessible with reflect.
-func ReflectStructMethod(Iface interface{}, MethodName string) error {
-	ValueIface := reflect.ValueOf(Iface)
-
-	// Check if the passed interface is a pointer
-	if ValueIface.Type().Kind() != reflect.Ptr {
-		// Create a new type of Iface, so we have a pointer to work with
-		ValueIface = reflect.New(reflect.TypeOf(Iface))
-	}
-
-	// Get the method by name
-	Method := ValueIface.MethodByName(MethodName)
-	if !Method.IsValid() {
-		return fmt.Errorf("Couldn't find method `%s` in interface `%s`, is it Exported?", MethodName, ValueIface.Type())
-	}
-	return nil
-}
-
-func SlideHasElem(s interface{}, elem interface{}) bool {
-	arrV := reflect.ValueOf(s)
-
-	if arrV.Kind() == reflect.Slice {
-		for i := 0; i < arrV.Len(); i++ {
-
-			// XXX - panics if slice element points to an unexported struct field
-			// see https://golang.org/pkg/reflect/#Value.Interface
-			if arrV.Index(i).Interface() == elem {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-// Reflect if an interface is either a struct or a pointer to a struct
-// and has the defined member field, if error is nil, the given
-// FieldName exists and is accessible with reflect.
-func ReflectStructField(Iface interface{}, FieldName string) error {
-	ValueIface := reflect.ValueOf(Iface)
-
-	// Check if the passed interface is a pointer
-	if ValueIface.Type().Kind() != reflect.Ptr {
-		// Create a new type of Iface's Type, so we have a pointer to work with
-		ValueIface = reflect.New(reflect.TypeOf(Iface))
-	}
-
-	// 'dereference' with Elem() and get the field by name
-	Field := ValueIface.Elem().FieldByName(FieldName)
-	if !Field.IsValid() {
-		return fmt.Errorf("Interface `%s` does not have the field `%s`", ValueIface.Type(), FieldName)
-	}
-	return nil
-}
-
 func TimeNowUTC() string {
 	//			2021-03-11 01:49:58.968944707 +0000 UTC
 	tar := strings.Split(time.Now().UTC().String(), " ")
@@ -1904,45 +1851,60 @@ func StructGetFieldName(structPoint, fieldPinter interface{}) (name string) {
 	return
 }
 
-func StructUniqueByFieldName(structSlice interface{}, fieldName string) (retlist []interface{}) {
-	if len(fieldName) != 0 && unicode.IsLower([]rune(fieldName)[0]) {
-		return
-	}
-	keys := make(map[interface{}]bool)
-	uniFunc := func(s reflect.Value) {
-		for i := 0; i < s.Len(); i++ {
-			entry := s.Index(i).Interface()
-			v := reflect.ValueOf(entry)
-			if v.Kind() != reflect.Struct {
-				continue
-			}
+type Bottele struct {
+	teleBot   *telebot.Bot
+	recipient int64
+}
 
-			vField := v.FieldByName(fieldName)
-			if !vField.IsValid() {
-				continue
-			}
+var teleBot = new(Bottele)
 
-			keyInterface := vField.Interface()
-			if _, ok := keys[keyInterface]; !ok {
-				keys[keyInterface] = true
-				retlist = append(retlist, entry)
-			}
-		}
+func TeleInit(token string, receperID int64) (err error) {
+	return teleBot.InitTelebot(token, receperID)
+}
+func TeleSend(msg interface{}, recipient ...int64) error {
+	return teleBot.Send(msg, recipient...)
+}
+func TeleGetBot() *telebot.Bot {
+	return teleBot.teleBot
+}
+
+func (is *Bottele) InitTelebot(token string, receperID int64) (err error) {
+	if is.teleBot != nil {
+		return fmt.Errorf("Bot is created")
 	}
-	switch reflect.TypeOf(structSlice).Kind() {
-	case reflect.Slice, reflect.Array:
-		s := reflect.ValueOf(structSlice)
-		uniFunc(s)
-	case reflect.Ptr:
-		e := reflect.ValueOf(structSlice).Elem()
-		switch e.Kind() {
-		case reflect.Slice, reflect.Array:
-			uniFunc(e)
-			//			pt := reflect.PtrTo(reflect.ValueOf(structSlice).Type()) // create a *structSlice type.
-			//			pv := reflect.New(pt.Elem())                             // create a reflect.Value of type *T.
-			//			v := reflect.ValueOf(retlist)
-			//			pv.Elem().Set(v) // sets pv to point to underlying value of v.
-		}
+	telegramBot, err := telebot.NewBot(telebot.Settings{
+		Token:  token,
+		Poller: &telebot.LongPoller{Timeout: 10 * time.Second},
+	})
+	if err != nil {
+		return err
 	}
-	return
+	is.teleBot = telegramBot
+	is.recipient = receperID
+	go telegramBot.Start()
+	return nil
+}
+
+func (is *Bottele) Send(msg interface{}, recipient ...int64) error {
+	if is.teleBot == nil {
+		return fmt.Errorf("need init telebot before using")
+	}
+	id := is.recipient
+	if len(recipient) != 0 {
+		id = recipient[0]
+	}
+	_, err := is.teleBot.Send(&telebot.User{ID: id}, msg)
+	return err
+}
+
+func CheckIsDone(ctx context.Context) bool {
+	select {
+	case _, ok := <-ctx.Done():
+		if ok {
+			return true
+		}
+		return true
+	default:
+		return false
+	}
 }
