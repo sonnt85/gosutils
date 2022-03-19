@@ -75,7 +75,6 @@ func (f *Formatter) Println(v interface{}) {
 	} else {
 		fmt.Println(v)
 	}
-	return
 }
 
 // Format formats JSON string.
@@ -216,4 +215,12 @@ func Println(v interface{}) {
 // Format JSON string with default options.
 func Format(data []byte) ([]byte, error) {
 	return NewFormatter().Format(data)
+}
+
+// Format JSON string with default options.
+func ToString(v interface{}) string {
+	format := NewFormatter()
+	format.DisabledColor = true
+	ret, _ := format.Marshal(v)
+	return string(ret)
 }
