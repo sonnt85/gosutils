@@ -97,21 +97,27 @@ func MMConfigApn(dev, apn, username, password string) (err error) {
 	}
 
 	if err := gonmmm.NMCreateConnection(conName, iface, "gsm", fmt.Sprintf(`apn "%s" user "%s" password "%s" ipv4.dns 1.1.1.1 connection.autoconnect yes`, apn, username, password)); err != nil {
-		log.Error("Can not add  gsm connection: ", err)
+		log.Error("can not add  gsm connection: ", err)
 		return err
 	}
 
-	gonmmm.NMConEditFieldIfChange(conName, "gsm.apn", apn)
-	gonmmm.NMConEditFieldIfChange(conName, "gsm.password", password)
-	gonmmm.NMConEditFieldIfChange(conName, "gsm.username", username)
-	gonmmm.NMConEditFieldIfChange(conName, "ipv4.dns", "1.1.1.1")
+	mapcon := map[string]string{"gsm.apn": apn, "gsm.password": password, "gsm.username": username, "ipv4.dns": "1.1.1.1"}
+	for k, v := range mapcon {
+		if !gonmmm.NMConEditFieldIfChange(conName, "gsm.password", password) {
+			return fmt.Errorf("can not modify field %s to %s", k, v)
+		}
+	}
 
+	return nil
+
+	time.Sleep(time.Second * 10)
 	if err := gonmmm.NMEnableCon(conName); err == nil {
 		return nil
 	} else {
 		// log.Warn(err.Error())
 		return err
 	}
+
 	time.Sleep(time.Second * 10)
 
 	if !MMPDPIsConfigured(apn) {
@@ -214,7 +220,7 @@ func InitModem(dev string) (retstr string, err error) {
 func MMInitModem() (err error) {
 
 	mmservicefile := "/lib/systemd/system/ModemManager.service"
-	//	lineExecStart := "ExecStart=/usr/sbin/ModemManager --filter-policy=strict --debug --log-level=DEBUG --log-file=/var/log/mm.log"
+	// lineExecStart := "ExecStart=/usr/sbin/ModemManager --filter-policy=strict --debug --log-level=DEBUG --log-file=/var/log/mm.log"
 	lineExecStart := "ExecStart=/usr/sbin/ModemManager --filter-policy=strict --debug --log-level=DEBUG"
 	pattern := "ExecStart=(.+)"
 	if !gogrep.FileIsMatchLine(mmservicefile, lineExecStart, true) {
@@ -225,8 +231,9 @@ func MMInitModem() (err error) {
 	if !gosystem.AppIsActive("ModemManager") {
 		sexec.ExecCommand("systemctl", "start", "ModemManager")
 	}
-	MMAte1()
-	gonmmm.MMSendAtCommand("AT+CFUN=1")
+	// MMPDPDelAll()
+	// MMAte1()
+	// gonmmm.MMSendAtCommand("AT+CFUN=1")
 	return nil
 }
 
@@ -261,6 +268,18 @@ func MMPDPdEL(indexs []int) (errindex []int) {
 		}
 	}
 	return
+}
+
+func MMPDPDelAll() bool {
+	flag := true
+	if pdps, err := MMGetPDP(); err == nil {
+		for k := range pdps {
+			if _, err := gonmmm.MMSendAtCommand(fmt.Sprintf("+CGDCONT=%s", k)); err != nil {
+				flag = false
+			}
+		}
+	}
+	return flag
 }
 
 func MMPDPIsConfigured(apn string) bool { //auto delete empty apn
@@ -574,7 +593,7 @@ PRODUCT="%s"
 	return true
 }
 
-func ResetGSMUsb(vendor, produc string) bool {
+func SwichModeNetwork(vendor, produc string) bool {
 	cmd := fmt.Sprintf(`
 #set -euo pipefail
 IFS=$'\n\t'
@@ -598,8 +617,43 @@ PRODUCT="%s"
 lsusb | grep "$VENDOR:$PRODUCT" | grep -ie 'Mass Storage Mode' &&  {
 	usb_modeswitch -p $PRODUCT -v $VENDOR -J;
 	true
+}
+`, vendor, produc)
+	if _, _, err := sexec.ExecCommandShell(cmd, time.Second*1); err != nil {
+		fmt.Println("Can not restart USB LTE")
+		return false
+	}
+	return true
+}
+
+func ResetGSMUsb(vendor, produc string) bool {
+	cmd := fmt.Sprintf(`
+#set -euo pipefail
+IFS=$'\n\t'
+VENDOR="%s"
+PRODUCT="%s"
+{ [[ $VENDOR ]] || [[ $PRODUCT ]]; }  && {
+   vp=$(lsusb | grep -m 1 -ie ${VENDOR}:${PRODUCT} | awk '{print $6}')
+}
+[[ $vp ]] || {
+   vp=$(lsusb | grep -m 1 -ie 'Huawei' -e 'Modem/Networkcard' | awk '{print $6}')
+}
+[[ $vp ]] && {
+   VENDOR=${vp%:*}
+   PRODUCT=${vp#*:}
+} || {
+   echo "Cannot find USB"
+   exit 0
+}
+
+#udevadm control --reload-rules
+lsusb | grep "$VENDOR:$PRODUCT" | grep -ie 'Mass Storage Mode' &&  {
+	usb_modeswitch -p $PRODUCT -v $VENDOR -J;
+	sleep 10
+	true
 } || {
     udevadm trigger --attr-match="idVendor=${VENDOR}" --attr-match="idProduct=${PRODUCT}"
+	sleep 60
 }
 
 exit 0
@@ -650,11 +704,14 @@ var _soracom_operator_list = []string{"docomo", "kddi", "softbank"}
 
 func GetGsmDevice() string {
 	cmd := `index=$(mmcli -L | grep -oPe 'org[^\s]+' | grep -Poe '[0-9]+$')
-	gsmDev=$([[ $index ]] && mmcli -m ${index} | grep 'primary port' | grep -m 1 -Poe '[^\s]+$' || { [[ -e "/dev/ttyUSB2" ]] && echo -n "ttyUSB2"; })
-	[[ $gsmDev ]] && echo -n "${gsmDev}" || { lsusb | grep -q -m 1 -ie 'Huawei' -e Modem -e Networkcard && echo -n "ttyUSB2"; }
+	gsmDev=$([[ $index ]] && mmcli -m ${index} | grep 'primary port' | grep -m 1 -Poe '[^\s]+$')
+	[[ $gsmDev ]] && echo -n "${gsmDev}" || exit 1
+	#gsmDev=$([[ $index ]] && mmcli -m ${index} | grep 'primary port' | grep -m 1 -Poe '[^\s]+$' || { [[ -e "/dev/ttyUSB2" ]] && echo -n "ttyUSB2"; })
+	#[[ $gsmDev ]] && echo -n "${gsmDev}" || { lsusb | grep -q -m 1 -ie 'Huawei' -e Modem -e Networkcard && echo -n "ttyUSB2"; }
 	`
 	if stdout, _, err := sexec.ExecCommandShell(cmd, time.Second*1); err != nil {
-		//		fmt.Println("Can not get GsnDevice")
+		ResetGSMUsb("", "")
+		//		fmt.Println("Can not get GsmDevice")
 	} else {
 		return sutils.StringTrimLeftRightNewlineSpace(string(stdout))
 	}
