@@ -1,20 +1,16 @@
-// Package scheduler is a cron replacement based on:
-//  http://adam.herokuapp.com/past/2010/4/13/rethinking_cron/
-// and
-//
-// Uses include:
 //  func main() {
 //    job := func() {
-//	log.Println("Time's up!")
+//	     log.Println("Time's up!")
 //    }
-//    scheduler.Every(5).Seconds().Run(function)
-//    scheduler.Every().Day().Run(function)
-//    scheduler.Every().Sunday().At("08:30").Run(function)
+//    sched.Every(5).Seconds().Run(function)
+//    sched.Every().Day().Run(function)
+//    sched.Every().Sunday().At("08:30").Run(function)
 //  }
-package scheduler
+package sched
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,12 +23,13 @@ type scheduled interface {
 
 // Job defines a running job and allows to stop a scheduled job or run it.
 type Job struct {
-	fn        func()
+	fn        func(fatherJob *Job)
 	Quit      chan bool
 	SkipWait  chan bool
 	err       error
 	schedule  scheduled
 	isRunning bool
+	isStart   bool
 	sync.RWMutex
 }
 
@@ -65,7 +62,7 @@ func (d *daily) setTime(h, m, s int) {
 	d.sec = s
 }
 
-func (d daily) nextRun() (time.Duration, error) {
+func (d *daily) nextRun() (time.Duration, error) {
 	now := time.Now()
 	year, month, day := now.Date()
 	date := time.Date(year, month, day, d.hour, d.min, d.sec, 0, time.Local)
@@ -81,7 +78,7 @@ type weekly struct {
 	d   daily
 }
 
-func (w weekly) nextRun() (time.Duration, error) {
+func (w *weekly) nextRun() (time.Duration, error) {
 	now := time.Now()
 	year, month, day := now.Date()
 	numDays := w.day - now.Weekday()
@@ -138,9 +135,9 @@ func (j *Job) At(hourTime string) *Job {
 		j.err = err
 		return j
 	}
-	d, ok := j.schedule.(daily)
+	d, ok := j.schedule.(*daily)
 	if !ok {
-		w, ok := j.schedule.(weekly)
+		w, ok := j.schedule.(*weekly)
 		if !ok {
 			j.err = errors.New("bad function chaining")
 			return j
@@ -154,12 +151,32 @@ func (j *Job) At(hourTime string) *Job {
 	return j
 }
 
+func (j *Job) Every(times ...int) *Job {
+	switch len(times) {
+	case 0:
+		return j
+	case 1:
+		r, ok := j.schedule.(*recurrent)
+		if ok {
+			r.units = times[0]
+			j.schedule = r
+		}
+		return j
+	default:
+		return &Job{err: errors.New("too many arguments in Every")}
+	}
+}
+
 // Run sets the job to the schedule and returns the pointer to the job so it may be
 // stopped or executed without waiting or an error.
-func (j *Job) Run(f func()) (*Job, error) {
+func (j *Job) Run(f func(*Job)) (*Job, error) {
 	if j.err != nil {
 		return nil, j.err
 	}
+	if j.isStart {
+		return j, fmt.Errorf("Already start")
+	}
+	j.isStart = true
 	var next time.Duration
 	var err error
 	j.Quit = make(chan bool, 1)
@@ -199,7 +216,7 @@ func runJob(job *Job) {
 		return
 	}
 	job.setRunning(true)
-	job.fn()
+	job.fn(job)
 	job.setRunning(false)
 }
 
@@ -244,7 +261,7 @@ func (j *Job) dayOfWeek(d time.Weekday) *Job {
 	if j.schedule != nil {
 		j.err = errors.New("bad function chaining")
 	}
-	j.schedule = weekly{day: d}
+	j.schedule = &weekly{day: d}
 	return j
 }
 
@@ -288,7 +305,7 @@ func (j *Job) Day() *Job {
 	if j.schedule != nil {
 		j.err = errors.New("bad function chaining")
 	}
-	j.schedule = daily{}
+	j.schedule = &daily{}
 	return j
 }
 

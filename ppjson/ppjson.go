@@ -199,8 +199,14 @@ func (f *Formatter) generateIndent(depth int) string {
 }
 
 // Marshal JSON data with default options.
-func Marshal(v interface{}) ([]byte, error) {
-	return NewFormatter().Marshal(v)
+func Marshal(v interface{}, clourFlag ...bool) ([]byte, error) {
+	format := NewFormatter()
+	if len(clourFlag) != 0 && clourFlag[0] {
+		format.DisabledColor = true
+	} else {
+		format.DisabledColor = false
+	}
+	return format.Marshal(v)
 }
 
 // Marshal JSON data with default options.
@@ -218,9 +224,13 @@ func Format(data []byte) ([]byte, error) {
 }
 
 // Format JSON string with default options.
-func ToString(v interface{}) string {
+func ToString(v interface{}, clourFlag ...bool) string {
 	format := NewFormatter()
-	format.DisabledColor = true
+	if len(clourFlag) != 0 && clourFlag[0] {
+		format.DisabledColor = true
+	} else {
+		format.DisabledColor = false
+	}
 	ret, _ := format.Marshal(v)
 	return string(ret)
 }
