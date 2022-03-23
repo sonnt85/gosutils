@@ -231,6 +231,9 @@ func ToString(v interface{}, clourFlag ...bool) string {
 	} else {
 		format.DisabledColor = false
 	}
-	ret, _ := format.Marshal(v)
-	return string(ret)
+	if ret, err := format.Marshal(v); err == nil {
+		return string(ret)
+	} else {
+		return fmt.Sprint(v)
+	}
 }
