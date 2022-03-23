@@ -10,6 +10,7 @@ import (
 
 	gossh "github.com/gliderlabs/ssh"
 	//	sw "github.com/sonnt85/gosutils/shellwords"
+	"github.com/sonnt85/gosutils/sreflect"
 	"github.com/sonnt85/gosutils/sutils"
 	"github.com/sonnt85/gosystem"
 	"golang.org/x/crypto/ssh"
@@ -177,13 +178,13 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				defer log.Warn("Exit scp server")
 				log.Warn("Starting scp server ...", commands)
 				scp := new(SecureCopier)
-				if sutils.SlideHasElem(commands, "-r") {
+				if sreflect.SlideHasElem(commands, "-r") {
 					scp.IsRecursive = true
 				} else {
 					scp.IsRecursive = false
 				}
 
-				if sutils.SlideHasElem(commands, "-q") {
+				if sreflect.SlideHasElem(commands, "-q") {
 					scp.IsQuiet = true
 				} else {
 					scp.IsQuiet = false
@@ -192,14 +193,14 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				scp.ignErr = false
 				scp.inPipe = s.(io.WriteCloser)
 				scp.outPipe = s.(io.ReadCloser)
-				if sutils.SlideHasElem(commands, "-t") {
+				if sreflect.SlideHasElem(commands, "-t") {
 					scp.dstFile = commands[len(commands)-1]
 					if err := scpFromClient(scp); err != nil {
 						log.Error("Error scpFromClient", err)
 					}
 					return
 				}
-				if sutils.SlideHasElem(commands, "-f") {
+				if sreflect.SlideHasElem(commands, "-f") {
 					scp.srcFile = commands[len(commands)-1]
 					if err := scpToClient(scp); err != nil {
 
