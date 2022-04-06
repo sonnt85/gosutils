@@ -237,3 +237,17 @@ func ToString(v interface{}, clourFlag ...bool) string {
 		return fmt.Sprint(v)
 	}
 }
+
+func ToBytes(v interface{}, clourFlag ...bool) []byte {
+	format := NewFormatter()
+	if len(clourFlag) != 0 && clourFlag[0] {
+		format.DisabledColor = true
+	} else {
+		format.DisabledColor = false
+	}
+	if ret, err := format.Marshal(v); err == nil {
+		return ret
+	} else {
+		return nil
+	}
+}
