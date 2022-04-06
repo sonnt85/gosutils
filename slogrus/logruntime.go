@@ -1,4 +1,4 @@
-package slog
+package slogrus
 
 import (
 	"fmt"
@@ -37,6 +37,7 @@ type FormatterRuntime struct {
 	File bool
 	// When true, only base name of the file will be tagged to fields
 	BaseNameOnly bool
+	TraceFlag    bool
 }
 
 // Format the current log entry by adding the function name and line number of the caller.

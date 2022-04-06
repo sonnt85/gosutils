@@ -113,7 +113,10 @@ func Every(times ...int) *Job {
 // definition. If a job is declared hourly won't start executing until the first hour
 // passed.
 func (j *Job) NotImmediately() *Job {
+	j.Lock() //lock for wrire rj.done
+	defer j.Unlock()
 	rj, ok := j.schedule.(*recurrent)
+
 	if !ok {
 		j.err = errors.New("bad function chaining")
 		return j
@@ -135,6 +138,8 @@ func (j *Job) At(hourTime string) *Job {
 		j.err = err
 		return j
 	}
+	j.Lock()
+	defer j.Unlock()
 	d, ok := j.schedule.(*daily)
 	if !ok {
 		w, ok := j.schedule.(*weekly)
@@ -151,19 +156,30 @@ func (j *Job) At(hourTime string) *Job {
 	return j
 }
 
-func (j *Job) Every(times ...int) *Job {
+func (j *Job) Every(times ...int) (units int, job *Job, err error) {
+	job = j
+	j.Lock()
+	defer j.Unlock()
 	switch len(times) {
 	case 0:
-		return j
+		r, ok := j.schedule.(*recurrent)
+		if ok {
+			units = r.units
+		} else {
+			err = fmt.Errorf("job is not recurrent")
+		}
+		return
 	case 1:
 		r, ok := j.schedule.(*recurrent)
 		if ok {
 			r.units = times[0]
-			j.schedule = r
+		} else {
+			err = fmt.Errorf("job is not recurrent")
 		}
-		return j
+		return
 	default:
-		return &Job{err: errors.New("too many arguments in Every")}
+		err = errors.New("too many arguments in Every")
+		return
 	}
 }
 
@@ -198,7 +214,9 @@ func (j *Job) Run(f func(*Job)) (*Job, error) {
 			case <-time.After(next):
 				go runJob(j)
 			}
+			j.RLock()
 			next, _ = j.schedule.nextRun()
+			j.RUnlock()
 		}
 	}(j)
 	return j, nil

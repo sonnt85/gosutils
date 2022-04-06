@@ -9,8 +9,6 @@ import (
 	"github.com/antchfx/jsonquery"
 	"github.com/antchfx/xmlquery"
 	"github.com/beevik/etree"
-	"github.com/mattn/go-colorable"
-	"gopkg.in/tucnak/telebot.v3"
 
 	"crypto/aes"
 	"crypto/cipher"
@@ -27,7 +25,6 @@ import (
 	xj "github.com/basgys/goxml2json"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/sonnt85/gosutils/slog"
 
 	"net"
 	"net/http"
@@ -821,7 +818,7 @@ func FindFileWithExt(pathS, ext string) (files []string) {
 func FileFindMatchNameRegx(root, pattern string) []string {
 	var matches []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
+		if err != nil { //signaling that Walk will not walk into this directory.
 			return err
 		}
 		if info.IsDir() {
@@ -1713,7 +1710,8 @@ func TimeNowUTC() string {
 	return fmt.Sprintf("%s %s", tar[0], tar[1])
 }
 
-func TimeTrack(start time.Time) time.Duration {
+func TimeTrack(start time.Time, fname ...string) time.Duration {
+	var name string
 	elapsed := time.Since(start)
 
 	// Skip this function, and fetch the PC and file for its parent.
@@ -1723,95 +1721,15 @@ func TimeTrack(start time.Time) time.Duration {
 	funcObj := runtime.FuncForPC(pc)
 
 	// Regex to extract just the function name (and not the module path).
-	runtimeFunc := regexp.MustCompile(`^.*\.(.*)$`)
-	name := runtimeFunc.ReplaceAllString(funcObj.Name(), "$1")
+	if len(fname) != 0 {
+		name = fname[0]
+	} else {
+		runtimeFunc := regexp.MustCompile(`^.*\.(.*)$`)
+		name = runtimeFunc.ReplaceAllString(funcObj.Name(), "$1")
+	}
 
 	log.Warn(fmt.Sprintf("TimeTrack %s took %s", name, elapsed))
 	return elapsed
-}
-
-func LogInit(logpath string, stdout io.Writer, logLEvel log.Level, logFlags ...bool) error {
-	rotateFlag := false
-	debugFlag := os.Getenv("__DEBUGAPP") == "yes"
-	if len(logFlags) != 0 && logFlags[0] && !debugFlag {
-
-		os.Stdout, _ = os.Open(os.DevNull)
-		os.Stderr, _ = os.Open(os.DevNull)
-		log.SetOutput(ioutil.Discard)
-		return nil
-	}
-
-	if len(logFlags) >= 2 && logFlags[1] {
-		rotateFlag = true
-	}
-
-	timeFormat := time.RFC3339
-
-	logTextFormatter := &log.TextFormatter{
-		TimestampFormat: timeFormat,
-		FullTimestamp:   true,
-		ForceColors:     true,
-		DisableColors:   false}
-
-	logJsonFormatter := &log.JSONFormatter{
-		TimestampFormat: timeFormat,
-		PrettyPrint:     false,
-	}
-
-	logRuntimeFormatter := &slog.FormatterRuntime{
-		ChildFormatter: logJsonFormatter,
-		File:           true,
-		Line:           true,
-		Package:        false,
-	}
-
-	log.SetLevel(logLEvel)
-	log.SetOutput(colorable.NewColorableStdout())
-	//	log.SetOutput(colorable.NewColorable(stdout))
-	//	log.SetOutput(stdout)
-
-	if debugFlag || logLEvel >= log.DebugLevel {
-		if logLEvel < log.DebugLevel {
-			logLEvel = log.DebugLevel
-		}
-		log.SetFormatter(logRuntimeFormatter)
-	} else {
-		//log.SetFormatter(&log.TextFormatter{TimestampFormat: time.RFC3339Nano, FullTimestamp: true, ForceColors: true, DisableColors: false})
-		log.SetFormatter(logTextFormatter)
-	}
-	if len(logpath) != 0 {
-		if strings.Contains(logpath, "sieuthanh") || rotateFlag {
-			logpath = strings.Replace(logpath, "sieuthanh", "", 1)
-			rotateFileHook := slog.NewRotateFileHook(slog.RotateFileConfig{
-				Filename:   logpath,
-				MaxSize:    1024, // kbytes
-				MaxBackups: 32,
-				MaxAge:     31, //days
-				Level:      logLEvel,
-				Formatter:  logRuntimeFormatter,
-			})
-
-			log.AddHook(rotateFileHook)
-		} else {
-			pathMap := slog.PathMap{}
-			for _, level := range log.AllLevels {
-				if level < (logLEvel + 1) {
-					pathMap[level] = logpath
-				}
-			}
-			localFileHook := slog.NewLocalFileHook(
-				pathMap,
-				logJsonFormatter,
-			)
-			log.AddHook(localFileHook)
-			//			if nil == TouchFile(logpath) {
-			//				if iofwrite, err := os.OpenFile(logpath, os.O_APPEND|os.O_WRONLY, os.ModeAppend); err == nil {
-			//					log.SetOutput(io.MultiWriter(stdout, iofwrite))
-			//				}
-			//			}
-		}
-	}
-	return nil
 }
 
 func RandRangeInterger(min, max int) int {
@@ -1849,52 +1767,6 @@ func StructGetFieldName(structPoint, fieldPinter interface{}) (name string) {
 		}
 	}
 	return
-}
-
-type Bottele struct {
-	teleBot   *telebot.Bot
-	recipient int64
-}
-
-var teleBot = new(Bottele)
-
-func TeleInit(token string, receperID int64) (err error) {
-	return teleBot.InitTelebot(token, receperID)
-}
-func TeleSend(msg interface{}, recipient ...int64) error {
-	return teleBot.Send(msg, recipient...)
-}
-func TeleGetBot() *telebot.Bot {
-	return teleBot.teleBot
-}
-
-func (is *Bottele) InitTelebot(token string, receperID int64) (err error) {
-	if is.teleBot != nil {
-		return fmt.Errorf("Bot is created")
-	}
-	telegramBot, err := telebot.NewBot(telebot.Settings{
-		Token:  token,
-		Poller: &telebot.LongPoller{Timeout: 10 * time.Second},
-	})
-	if err != nil {
-		return err
-	}
-	is.teleBot = telegramBot
-	is.recipient = receperID
-	go telegramBot.Start()
-	return nil
-}
-
-func (is *Bottele) Send(msg interface{}, recipient ...int64) error {
-	if is.teleBot == nil {
-		return fmt.Errorf("need init telebot before using")
-	}
-	id := is.recipient
-	if len(recipient) != 0 {
-		id = recipient[0]
-	}
-	_, err := is.teleBot.Send(&telebot.User{ID: id}, msg)
-	return err
 }
 
 func CheckIsDone(ctx context.Context) bool {

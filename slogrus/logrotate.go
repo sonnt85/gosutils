@@ -1,7 +1,6 @@
-package slog
+package slogrus
 
 import (
-	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/sonnt85/goring"
+	"github.com/sonnt85/gosutils/endec"
 )
 
 type RotateFileConfig struct {
@@ -21,8 +22,10 @@ type RotateFileConfig struct {
 	MaxSize    int
 	MaxBackups int
 	MaxAge     int
+	Compress   bool
 	Level      logrus.Level
 	Formatter  logrus.Formatter
+	BuffSize   int
 }
 
 type RotateFileHook struct {
@@ -31,7 +34,8 @@ type RotateFileHook struct {
 }
 
 const (
-	backupTimeFormat = "2006-01-02T15-04-05.000"
+	// backupTimeFormat = "2006-01-22T15-04-05.000"
+	backupTimeFormat = "2006_01_02T15_04_05.000Z0700"
 	compressSuffix   = ".gz"
 	defaultMaxSize   = 10240
 )
@@ -104,6 +108,7 @@ type LoggerRotate struct {
 
 	size int64
 	file *os.File
+	buff *goring.RingBytes
 	mu   sync.Mutex
 
 	millCh    chan bool
@@ -128,33 +133,44 @@ var (
 // than MaxSize, the file is closed, renamed to include a timestamp of the
 // current time, and a new log file is created using the original log file name.
 // If the length of the write is greater than MaxSize, an error is returned.
+func (l *LoggerRotate) writeFromBuffToFile() {
+	var p []byte
+	for {
+		func() (n int, err error) {
+			p = l.buff.ReadAllWait()
+			l.mu.Lock() //lock file
+			defer l.mu.Unlock()
+
+			writeLen := int64(len(p))
+			if writeLen > l.max() {
+				return 0, fmt.Errorf(
+					"write length %d exceeds maximum file size %d", writeLen, l.max(),
+				)
+			}
+
+			if l.file == nil {
+				if err = l.openExistingOrNew(len(p)); err != nil {
+					return 0, err
+				}
+			}
+
+			if l.size+writeLen > l.max() {
+				if err := l.rotate(); err != nil {
+					return 0, err
+				}
+			}
+
+			n, err = l.file.Write(p)
+			l.size += int64(n)
+
+			return n, err
+		}()
+	}
+}
+
 func (l *LoggerRotate) Write(p []byte) (n int, err error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	writeLen := int64(len(p))
-	if writeLen > l.max() {
-		return 0, fmt.Errorf(
-			"write length %d exceeds maximum file size %d", writeLen, l.max(),
-		)
-	}
-
-	if l.file == nil {
-		if err = l.openExistingOrNew(len(p)); err != nil {
-			return 0, err
-		}
-	}
-
-	if l.size+writeLen > l.max() {
-		if err := l.rotate(); err != nil {
-			return 0, err
-		}
-	}
-
-	n, err = l.file.Write(p)
-	l.size += int64(n)
-
-	return n, err
+	l.buff.WriteWait(p)
+	return len(p), nil
 }
 
 // Close implements io.Closer, and closes the current logfile.
@@ -208,7 +224,8 @@ func (l *LoggerRotate) openNew() error {
 	}
 
 	name := l.filename()
-	mode := os.FileMode(0644)
+	mode := os.FileMode(0600)
+	// mode := os.FileMode(0644)
 	info, err := os_Stat(name)
 	if err == nil {
 		// Copy the mode off the old logfile.
@@ -249,7 +266,6 @@ func backupName(name string, local bool) string {
 	if !local {
 		t = t.UTC()
 	}
-
 	timestamp := t.Format(backupTimeFormat)
 	return filepath.Join(dir, fmt.Sprintf("%s-%s%s", prefix, timestamp, ext))
 }
@@ -289,7 +305,7 @@ func (l *LoggerRotate) filename() string {
 	if l.Filename != "" {
 		return l.Filename
 	}
-	name := filepath.Base(os.Args[0]) + "-lumberjack.log"
+	name := filepath.Base(os.Args[0]) + "-rotate.log"
 	return filepath.Join(os.TempDir(), name)
 }
 
@@ -302,7 +318,7 @@ func (l *LoggerRotate) millRunOnce() error {
 		return nil
 	}
 
-	files, err := l.oldLogFiles()
+	files, err := l.GetOldLogFiles()
 	if err != nil {
 		return err
 	}
@@ -360,9 +376,19 @@ func (l *LoggerRotate) millRunOnce() error {
 	}
 	for _, f := range compress {
 		fn := filepath.Join(l.dir(), f.Name())
-		errCompress := compressLogFile(fn, fn+compressSuffix)
-		if err == nil && errCompress != nil {
-			err = errCompress
+		zipname := fn + compressSuffix
+		if info, errinfo := os_Stat(fn); err == nil {
+			if errinfo = chown(zipname, info); err != nil {
+				err = errinfo
+			}
+		}
+
+		errCompress := endec.CompressFile(zipname, fn, true)
+
+		if err == nil {
+			if errCompress != nil {
+				err = errCompress
+			}
 		}
 	}
 
@@ -372,9 +398,14 @@ func (l *LoggerRotate) millRunOnce() error {
 // millRun runs in a goroutine to manage post-rotation compression and removal
 // of old log files.
 func (l *LoggerRotate) millRun() {
-	for _ = range l.millCh {
-		// what am I going to do, log this?
-		_ = l.millRunOnce()
+	// for _ = range l.millCh {
+	var err error
+	for {
+		<-l.millCh
+		err = l.millRunOnce()
+		if err != nil {
+			fmt.Println("Some error when rotation logs: ", err)
+		}
 	}
 }
 
@@ -391,9 +422,9 @@ func (l *LoggerRotate) mill() {
 	}
 }
 
-// oldLogFiles returns the list of backup log files stored in the same
+// GetOldLogFiles returns the list of backup log files stored in the same
 // directory as the current log file, sorted by ModTime
-func (l *LoggerRotate) oldLogFiles() ([]logInfo, error) {
+func (l *LoggerRotate) GetOldLogFiles() ([]logInfo, error) {
 	files, err := ioutil.ReadDir(l.dir())
 	if err != nil {
 		return nil, fmt.Errorf("can't read log file directory: %s", err)
@@ -401,16 +432,17 @@ func (l *LoggerRotate) oldLogFiles() ([]logInfo, error) {
 	logFiles := []logInfo{}
 
 	prefix, ext := l.prefixAndExt()
+	var t time.Time
 
 	for _, f := range files {
 		if f.IsDir() {
 			continue
 		}
-		if t, err := l.timeFromName(f.Name(), prefix, ext); err == nil {
+		if t, err = l.timeFromName(f.Name(), prefix, ext); err == nil {
 			logFiles = append(logFiles, logInfo{t, f})
 			continue
 		}
-		if t, err := l.timeFromName(f.Name(), prefix, ext+compressSuffix); err == nil {
+		if t, err = l.timeFromName(f.Name(), prefix, ext+compressSuffix); err == nil {
 			logFiles = append(logFiles, logInfo{t, f})
 			continue
 		}
@@ -459,61 +491,6 @@ func (l *LoggerRotate) prefixAndExt() (prefix, ext string) {
 	return prefix, ext
 }
 
-// compressLogFile compresses the given log file, removing the
-// uncompressed log file if successful.
-func compressLogFile(src, dst string) (err error) {
-	f, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open log file: %v", err)
-	}
-	defer f.Close()
-
-	fi, err := os_Stat(src)
-	if err != nil {
-		return fmt.Errorf("failed to stat log file: %v", err)
-	}
-
-	if err := chown(dst, fi); err != nil {
-		return fmt.Errorf("failed to chown compressed log file: %v", err)
-	}
-
-	// If this file already exists, we presume it was created by
-	// a previous attempt to compress the log file.
-	gzf, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fi.Mode())
-	if err != nil {
-		return fmt.Errorf("failed to open compressed log file: %v", err)
-	}
-	defer gzf.Close()
-
-	gz := gzip.NewWriter(gzf)
-
-	defer func() {
-		if err != nil {
-			os.Remove(dst)
-			err = fmt.Errorf("failed to compress log file: %v", err)
-		}
-	}()
-
-	if _, err := io.Copy(gz, f); err != nil {
-		return err
-	}
-	if err := gz.Close(); err != nil {
-		return err
-	}
-	if err := gzf.Close(); err != nil {
-		return err
-	}
-
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Remove(src); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // logInfo is a convenience struct to return the filename and its embedded
 // timestamp.
 type logInfo struct {
@@ -543,13 +520,16 @@ func NewRotateFileHook(config RotateFileConfig) logrus.Hook {
 	hook := RotateFileHook{
 		Config: config,
 	}
-	hook.logWriter = &LoggerRotate{
+	lr := &LoggerRotate{
 		Filename:   config.Filename,
 		MaxSize:    config.MaxSize,
 		MaxBackups: config.MaxBackups,
 		MaxAge:     config.MaxAge,
+		Compress:   config.Compress,
+		buff:       goring.NewRingBytes(config.BuffSize),
 	}
-
+	hook.logWriter = lr
+	go lr.writeFromBuffToFile()
 	return &hook
 }
 

@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package sutils
@@ -10,20 +11,21 @@ import (
 	dbus "github.com/godbus/dbus"
 )
 
-const dbusisnil = "dbus opject is nil"
+// const ErrDusObjectIsNil = "dbus opject is nil"
+var ErrDusObjectIsNil = fmt.Errorf("dbus opject is nil")
 
 // dbusCall calls a D-Bus method that has no return value.
-func DbusCall(bus *dbus.Object, path string) error {
+func DbusCall(bus dbus.BusObject, path string) error {
 	if bus == nil {
-		return fmt.Errorf(dbusisnil)
+		return ErrDusObjectIsNil
 	}
 	return bus.Call(path, 0).Err
 }
 
 // dbusGetBool calls a D-Bus method that will return a boolean value.
-func DbusGetBool(bus *dbus.Object, path string) (bool, error) {
+func DbusGetBool(bus dbus.BusObject, path string) (bool, error) {
 	if bus == nil {
-		return false, fmt.Errorf(dbusisnil)
+		return false, ErrDusObjectIsNil
 	}
 	call := bus.Call(path, 0)
 	if call.Err != nil {
@@ -33,9 +35,9 @@ func DbusGetBool(bus *dbus.Object, path string) (bool, error) {
 }
 
 // dbusGetFloat64 calls a D-Bus method that will return an int64 value.
-func DbusGetFloat64(bus *dbus.Object, path string) (float64, error) {
+func DbusGetFloat64(bus dbus.BusObject, path string) (float64, error) {
 	if bus == nil {
-		return 0, fmt.Errorf(dbusisnil)
+		return 0, ErrDusObjectIsNil
 	}
 	call := bus.Call(path, 0)
 	if call.Err != nil {
@@ -45,9 +47,9 @@ func DbusGetFloat64(bus *dbus.Object, path string) (float64, error) {
 }
 
 // dbusGetInt64 calls a D-Bus method that will return an int64 value.
-func DbusGetInt64(bus *dbus.Object, path string) (int64, error) {
+func DbusGetInt64(bus dbus.BusObject, path string) (int64, error) {
 	if bus == nil {
-		return 0, fmt.Errorf(dbusisnil)
+		return 0, ErrDusObjectIsNil
 	}
 	call := bus.Call(path, 0)
 	if call.Err != nil {
@@ -57,9 +59,9 @@ func DbusGetInt64(bus *dbus.Object, path string) (int64, error) {
 }
 
 // dbusGetString calls a D-Bus method that will return a string value.
-func DbusGetString(bus *dbus.Object, path string) (string, error) {
+func DbusGetString(bus dbus.BusObject, path string) (string, error) {
 	if bus == nil {
-		return "", fmt.Errorf(dbusisnil)
+		return "", ErrDusObjectIsNil
 	}
 	call := bus.Call(path, 0)
 	if call.Err != nil {
@@ -69,9 +71,9 @@ func DbusGetString(bus *dbus.Object, path string) (string, error) {
 }
 
 // dbusGetStringArray calls a D-Bus method that will return a string array.
-func DbusGetStringArray(bus *dbus.Object, path string) ([]string, error) {
+func DbusGetStringArray(bus dbus.BusObject, path string) ([]string, error) {
 	if bus == nil {
-		return []string{}, fmt.Errorf(dbusisnil)
+		return []string{}, ErrDusObjectIsNil
 	}
 	call := bus.Call(path, 0)
 	if call.Err != nil {

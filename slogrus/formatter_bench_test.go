@@ -1,4 +1,4 @@
-package slog
+package slogrus
 
 import (
 	"fmt"
@@ -54,7 +54,7 @@ var errorFields = logrus.Fields{
 }
 
 func BenchmarkErrorRuntimeAndTextFormatter(b *testing.B) {
-	doBenchmark(b, &Formatter{ChildFormatter: &logrus.TextFormatter{DisableColors: true}}, errorFields)
+	doBenchmark(b, &FormatterRuntime{ChildFormatter: &logrus.TextFormatter{DisableColors: true}}, errorFields)
 }
 
 func BenchmarkErrorTextFormatter(b *testing.B) {
@@ -62,7 +62,7 @@ func BenchmarkErrorTextFormatter(b *testing.B) {
 }
 
 func BenchmarkSmallRuntimeAndTextFormatter(b *testing.B) {
-	doBenchmark(b, &Formatter{ChildFormatter: &logrus.TextFormatter{DisableColors: true}}, smallFields)
+	doBenchmark(b, &FormatterRuntime{ChildFormatter: &logrus.TextFormatter{DisableColors: true}}, smallFields)
 }
 
 func BenchmarkSmallTextFormatter(b *testing.B) {
@@ -70,7 +70,7 @@ func BenchmarkSmallTextFormatter(b *testing.B) {
 }
 
 func BenchmarkLargeRuntimeAndTextFormatter(b *testing.B) {
-	doBenchmark(b, &Formatter{ChildFormatter: &logrus.TextFormatter{DisableColors: true}}, largeFields)
+	doBenchmark(b, &FormatterRuntime{ChildFormatter: &logrus.TextFormatter{DisableColors: true}}, largeFields)
 }
 
 func BenchmarkLargeTextFormatter(b *testing.B) {
@@ -78,7 +78,7 @@ func BenchmarkLargeTextFormatter(b *testing.B) {
 }
 
 func BenchmarkSmallRuntimeAndJSONFormatter(b *testing.B) {
-	doBenchmark(b, &Formatter{ChildFormatter: &logrus.JSONFormatter{}}, smallFields)
+	doBenchmark(b, &FormatterRuntime{ChildFormatter: &logrus.JSONFormatter{}}, smallFields)
 }
 
 func BenchmarkSmallJSONFormatter(b *testing.B) {
@@ -86,7 +86,7 @@ func BenchmarkSmallJSONFormatter(b *testing.B) {
 }
 
 func BenchmarkLargeRuntimeAndJSONFormatter(b *testing.B) {
-	doBenchmark(b, &Formatter{ChildFormatter: &logrus.JSONFormatter{}}, largeFields)
+	doBenchmark(b, &FormatterRuntime{ChildFormatter: &logrus.JSONFormatter{}}, largeFields)
 }
 
 func BenchmarkLargeJSONFormatter(b *testing.B) {

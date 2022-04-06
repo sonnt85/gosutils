@@ -69,14 +69,21 @@ func Float64sAreUnique(a []float64) bool { return IsUniqued(sort.Float64Slice(a)
 
 // IntSlice attaches the methods of Interface to []int.
 type IntSlice struct{ P *[]int }
+type Int64Slice struct{ P *[]int64 }
 
 func (p IntSlice) Len() int           { return len(*p.P) }
 func (p IntSlice) Swap(i, j int)      { (*p.P)[i], (*p.P)[j] = (*p.P)[j], (*p.P)[i] }
 func (p IntSlice) Less(i, j int) bool { return (*p.P)[i] < (*p.P)[j] }
 func (p IntSlice) Truncate(n int)     { *p.P = (*p.P)[:n] }
 
+func (p Int64Slice) Len() int           { return len(*p.P) }
+func (p Int64Slice) Swap(i, j int)      { (*p.P)[i], (*p.P)[j] = (*p.P)[j], (*p.P)[i] }
+func (p Int64Slice) Less(i, j int) bool { return (*p.P)[i] < (*p.P)[j] }
+func (p Int64Slice) Truncate(n int)     { *p.P = (*p.P)[:n] }
+
 // Ints removes duplicate elements from a sorted slice of ints.
-func UniqueInts(a *[]int) { Unique(IntSlice{a}) }
+func UniqueInts(a *[]int)     { Unique(IntSlice{a}) }
+func UniqueInts64(a *[]int64) { Unique(Int64Slice{a}) }
 
 // IntsAreUnique tests whether a slice of ints is sorted and its elements are
 // unique.

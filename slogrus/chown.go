@@ -1,6 +1,7 @@
+//go:build !linux
 // +build !linux
 
-package slog
+package slogrus
 
 import (
 	"os"

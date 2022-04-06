@@ -1,4 +1,4 @@
-package slog
+package slogrus
 
 import (
 	"bytes"
@@ -37,7 +37,7 @@ func TestRuntimeFormatter(t *testing.T) {
 	buffer := bytes.NewBuffer(nil)
 
 	childFormatter := logrus.JSONFormatter{}
-	formatter := &Formatter{ChildFormatter: &childFormatter}
+	formatter := &FormatterRuntime{ChildFormatter: &childFormatter}
 	formatter.Line = true
 	formatter.Package = true
 	formatter.File = true
@@ -79,7 +79,7 @@ func TestFunctionInFunctionFormatter(t *testing.T) {
 	buffer := bytes.NewBuffer(nil)
 
 	childFormatter := logrus.JSONFormatter{}
-	formatter := &Formatter{ChildFormatter: &childFormatter}
+	formatter := &FormatterRuntime{ChildFormatter: &childFormatter}
 	formatter.Line = true
 	formatter.Package = true
 	formatter.File = true
