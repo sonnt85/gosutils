@@ -1,6 +1,7 @@
 package sshclient
 
 import (
+	"context"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -403,14 +404,6 @@ func (c *Client) LocalForward(retport chan int, laddrstr, raddrstr string) error
 
 // RemoteForward forwards a remote port - ssh -R
 func (c *Client) RemoteForward(retport chan int, remote, local string) error {
-	doneRetPort := false
-
-	defer func() {
-		if !doneRetPort {
-			retport <- 0
-		}
-	}()
-
 	if remote == "0" {
 		remote = "localhost:0"
 	}
@@ -421,12 +414,14 @@ func (c *Client) RemoteForward(retport chan int, remote, local string) error {
 	}
 
 	go func() {
+		ctx, canFun := context.WithTimeout(context.Background(), time.Second*5)
 		select {
 		case retport <- ln.Addr().(*net.TCPAddr).Port:
 			// strings.Split(ln.Addr().String(), ":")[1]:
-			doneRetPort = true
-			return
+		case <-ctx.Done():
+			retport <- -1
 		}
+		canFun()
 	}()
 	//	log.Println("[Remote forward] Listening on address: ", ln.Addr().String())
 
@@ -436,7 +431,6 @@ func (c *Client) RemoteForward(retport chan int, remote, local string) error {
 		for {
 			select {
 			case <-quit:
-
 				return
 			default:
 				conn, err := ln.Accept()
@@ -453,11 +447,8 @@ func (c *Client) RemoteForward(retport chan int, remote, local string) error {
 				closefunc := func() {
 					conn.Close()
 					conn2.Close()
-
 				}
-
 				go CopyReadWriters(conn, conn2, closefunc)
-
 			}
 
 		}

@@ -35,7 +35,7 @@ func main() {
 
 func NewVNCProxy() *vncproxy.Proxy {
 	return vncproxy.New(&vncproxy.Config{
-		LogLevel: vncproxy.DebugLevel,
+		Logger:       logrus.StandardLogger(),
 		TokenHandler: func(r *http.Request) (addr string, err error) {
       		// validate token and get forward vnc addr
       		// ...

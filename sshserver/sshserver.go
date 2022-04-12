@@ -4,6 +4,7 @@ import (
 	//	"fmt"
 	//	"encoding/hex"
 
+	"context"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -438,6 +439,10 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 		server.PublicKeyHandler = publicKeyHandler
 	}
 
+	server.ConnectionFailedCallback = gossh.ConnectionFailedCallback(func(conn net.Conn, err error) {
+		log.Println("ConnectionFailedCallback ", err)
+	})
+
 	server.LocalPortForwardingCallback = gossh.LocalPortForwardingCallback(func(ctx gossh.Context, dhost string, dport uint32) bool {
 		log.Println("[ssh -L] Accepted forward", dhost, dport)
 		return true
@@ -465,27 +470,20 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 }
 
 func (s *Server) Start(retport chan int) error {
-	doneRetPort := false
-
-	defer func() {
-		if !doneRetPort {
-			retport <- 0
-		}
-	}()
-
 	ln, err := net.Listen("tcp4", s.Addr)
 	if err != nil {
 		return err
 	}
+	ctx, canFunc := context.WithTimeout(context.Background(), time.Second*30)
 	go func() {
 		select {
 		case retport <- ln.Addr().(*net.TCPAddr).Port:
-			doneRetPort = true
-			return
+		case <-ctx.Done():
+			retport <- -1
 		}
+		canFunc()
 	}()
 	err = s.Serve(ln)
-
 	return err
 	//	return s.ListenAndServe()
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 
+	"github.com/sirupsen/logrus"
 	"github.com/sonnt85/gosutils/vncproxy"
 
 	"github.com/gin-gonic/gin"
@@ -25,7 +26,7 @@ func main() {
 
 func NewVNCProxy() *vncproxy.Proxy {
 	return vncproxy.New(&vncproxy.Config{
-		LogLevel: vncproxy.DebugLevel,
+		Logger: logrus.StandardLogger(),
 		TokenHandler: func(r *http.Request) (addr string, err error) {
 			return ":5901", nil
 		},

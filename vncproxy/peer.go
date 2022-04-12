@@ -6,8 +6,8 @@ import (
 
 	"github.com/sonnt85/gosutils/bufcopy"
 
+	// "github.com/gorilla/websocket"
 	"github.com/pkg/errors"
-
 	"golang.org/x/net/websocket"
 )
 

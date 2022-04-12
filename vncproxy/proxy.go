@@ -5,21 +5,23 @@ import (
 	"strings"
 	"sync"
 
+	log "github.com/sirupsen/logrus"
+
 	"golang.org/x/net/websocket"
+	// "github.com/gorilla/websocket"
 )
 
 type TokenHandler func(r *http.Request) (addr string, err error)
 
 // Config represents vnc proxy config
 type Config struct {
-	LogLevel uint32
+	Logger *log.Logger
 	TokenHandler
 }
 
 // Proxy represents vnc proxy
 type Proxy struct {
-	logLevel     uint32
-	logger       *logger
+	logger       *log.Logger
 	peers        map[*peer]struct{}
 	l            sync.RWMutex
 	tokenHandler TokenHandler
@@ -35,8 +37,7 @@ func New(conf *Config) *Proxy {
 	}
 
 	return &Proxy{
-		logLevel:     conf.LogLevel,
-		logger:       NewLogger(conf.LogLevel),
+		logger:       conf.Logger,
 		peers:        make(map[*peer]struct{}),
 		l:            sync.RWMutex{},
 		tokenHandler: conf.TokenHandler,

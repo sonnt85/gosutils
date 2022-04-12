@@ -210,8 +210,8 @@ func Marshal(v interface{}, clourFlag ...bool) ([]byte, error) {
 }
 
 // Marshal JSON data with default options.
-func Println(v interface{}) {
-	if str, err := Marshal(v); err == nil {
+func Println(v interface{}, clourFlag ...bool) {
+	if str, err := Marshal(v, clourFlag...); err == nil {
 		fmt.Println(string(str))
 	} else {
 		fmt.Println(v)
