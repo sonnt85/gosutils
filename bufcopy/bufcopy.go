@@ -31,11 +31,12 @@ func (b *BufCopy) Copy(dst io.Writer, src io.Reader) (written int64, err error) 
 
 	buf := b.Get().([]byte)
 	defer b.Put(buf)
-
+	var nr, nw int
+	var er, ew error
 	for {
-		nr, er := src.Read(buf)
+		nr, er = src.Read(buf)
 		if nr > 0 {
-			nw, ew := dst.Write(buf[0:nr])
+			nw, ew = dst.Write(buf[0:nr])
 			if nw > 0 {
 				written += int64(nw)
 			}
