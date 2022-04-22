@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime/debug"
-	"time"
 
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -35,7 +34,7 @@ func New(writer io.Writer) *Slog {
 	return slog
 }
 
-func NewLogFile(logPath string, log_level logrus.Level, pretty bool, diableStdout bool, logpath ...string) *Slog {
+func NewLogFile(logPath string, log_level Level, pretty bool, diableStdout bool, logpath ...string) *Slog {
 	slog := &Slog{
 		Logger: logrus.New(),
 	}
@@ -48,6 +47,16 @@ func (slog *Slog) TraceStack(msg ...any) {
 	slog.Trace(msg...)
 }
 
+func (slog *Slog) TracefStack(format string, args ...interface{}) {
+	args = append(args, string(debug.Stack()))
+	format = format + "[%s]"
+	slog.Tracef(format, args...)
+}
+
+func TracefStack(format string, args ...interface{}) {
+	stdSlog.TracefStack(format, args...)
+}
+
 func TraceStack(msg ...any) {
 	stdSlog.TraceStack(msg...)
 }
@@ -57,17 +66,13 @@ func (slog *Slog) GetOldLogFiles() (retpaths []string) {
 		return
 	}
 	if lgr, ok := slog.rh.logWriter.(*LoggerRotate); ok {
-		if filesinfo, err := lgr.GetOldLogFiles(); err == nil {
-			for _, fp := range filesinfo {
-				retpaths = append(retpaths, fp.Name())
-			}
-		}
+		return lgr.GetOldLogFiles()
 	}
 	return
 }
 
 //logPath string, log_level logrus.Level, pretty bool)
-func initDefaultLog(slog *Slog, log_level logrus.Level, pretty bool, diableStdout bool, logpaths ...string) {
+func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool, logpaths ...string) {
 
 	slog.initted = true
 	if diableStdout {
@@ -81,11 +86,13 @@ func initDefaultLog(slog *Slog, log_level logrus.Level, pretty bool, diableStdou
 		colorable.EnableColorsStdout(nil)
 	}
 
-	timeFormat := time.RFC3339
+	// timeFormat := time.RFC3339 //"2006-01-02T15:04:05Z07:00"
+	timeFormat := "2006-01-02T15:04:05.000Z07:00" //milisecond
 
 	logJsonFormatter := &logrus.JSONFormatter{
-		TimestampFormat: timeFormat,
-		PrettyPrint:     pretty,
+		TimestampFormat:   timeFormat,
+		PrettyPrint:       pretty,
+		DisableHTMLEscape: true,
 	}
 
 	logRuntimeFormatter := &FormatterRuntime{
@@ -93,8 +100,9 @@ func initDefaultLog(slog *Slog, log_level logrus.Level, pretty bool, diableStdou
 		File:           true,
 		Line:           true,
 		Package:        false,
+		// TextToSearchFun: "gosutils.slogrus.",
 	}
-	slog.SetLevel(log_level)
+	slog.SetLevel(log_level.Level)
 	if stdSlog == slog { //print to stdout standard
 		if !diableStdout {
 			// fmt.Println("Config standard Log Level: ", log_level)
@@ -121,7 +129,7 @@ func initDefaultLog(slog *Slog, log_level logrus.Level, pretty bool, diableStdou
 		if false { //for test only
 			pathMap := PathMap{}
 			for _, level := range logrus.AllLevels {
-				if level < (log_level + 1) {
+				if level < (log_level.Level + 1) {
 					pathMap[level] = logpaths[0]
 				}
 			}
@@ -136,8 +144,8 @@ func initDefaultLog(slog *Slog, log_level logrus.Level, pretty bool, diableStdou
 			Filename:   logpaths[0],
 			MaxSize:    1024, // kbytes
 			MaxBackups: 32,
-			MaxAge:     31,        //days
-			Level:      log_level, //for file
+			MaxAge:     31,              //days
+			Level:      log_level.Level, //for file
 			Formatter:  logRuntimeFormatter,
 			Compress:   true,
 			BuffSize:   1024 * 10,
@@ -147,8 +155,12 @@ func initDefaultLog(slog *Slog, log_level logrus.Level, pretty bool, diableStdou
 	}
 }
 
+func GetStandardLogger() *Slog {
+	return stdSlog
+}
+
 //log for stdout and logfile,
-func InitDefaultLog(log_level logrus.Level, pretty bool, diableStdout bool, logpaths ...string) *Slog {
+func InitStandardLogger(log_level Level, pretty bool, diableStdout bool, logpaths ...string) *Slog {
 	if stdSlog.initted {
 		return stdSlog
 	}
@@ -162,8 +174,4 @@ func InitDefaultLog(log_level logrus.Level, pretty bool, diableStdout bool, logp
 //log for stdout and logfile,
 func GetOldLogFiles() (filesPath []string) {
 	return stdSlog.GetOldLogFiles()
-}
-
-func StandardLogger() *logrus.Logger {
-	return logrus.StandardLogger()
 }

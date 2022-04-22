@@ -318,7 +318,7 @@ func (l *LoggerRotate) millRunOnce() error {
 		return nil
 	}
 
-	files, err := l.GetOldLogFiles()
+	files, err := l.getOldLogFiles()
 	if err != nil {
 		return err
 	}
@@ -383,7 +383,7 @@ func (l *LoggerRotate) millRunOnce() error {
 			}
 		}
 
-		errCompress := endec.CompressFile(zipname, fn, true)
+		errCompress := endec.ZipFile(zipname, fn, true)
 
 		if err == nil {
 			if errCompress != nil {
@@ -422,9 +422,9 @@ func (l *LoggerRotate) mill() {
 	}
 }
 
-// GetOldLogFiles returns the list of backup log files stored in the same
+// getOldLogFiles returns the list of backup log files stored in the same
 // directory as the current log file, sorted by ModTime
-func (l *LoggerRotate) GetOldLogFiles() ([]logInfo, error) {
+func (l *LoggerRotate) getOldLogFiles() ([]logInfo, error) {
 	files, err := ioutil.ReadDir(l.dir())
 	if err != nil {
 		return nil, fmt.Errorf("can't read log file directory: %s", err)
@@ -453,6 +453,17 @@ func (l *LoggerRotate) GetOldLogFiles() ([]logInfo, error) {
 	sort.Sort(byFormatTime(logFiles))
 
 	return logFiles, nil
+}
+
+func (l *LoggerRotate) GetOldLogFiles() (retFullPaths []string) {
+	var filesinfo []logInfo
+	var err error
+	if filesinfo, err = l.getOldLogFiles(); err == nil {
+		for _, fp := range filesinfo {
+			retFullPaths = append(retFullPaths, filepath.Join(l.dir(), fp.Name()))
+		}
+	}
+	return
 }
 
 // timeFromName extracts the formatted time from the filename by stripping off

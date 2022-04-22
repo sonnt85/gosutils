@@ -28,6 +28,7 @@ const (
 
 // Formatter decorates log entries with function name and package name (optional) and line number (optional)
 type FormatterRuntime struct {
+	// TextToSearchFun string
 	ChildFormatter logrus.Formatter
 	// When true, line number will be tagged to fields as well
 	Line bool
@@ -71,18 +72,22 @@ func (f *FormatterRuntime) Format(entry *logrus.Entry) ([]byte, error) {
 }
 
 func (f *FormatterRuntime) getCurrentPosition(entry *logrus.Entry) (string, string, string) {
+	var function, lineNumber, file string
+	var pc uintptr
+	var line int
 	skip := logrusStackJump
 	if len(entry.Data) == 0 {
 		skip = logrusFieldlessStackJump
 	}
 start:
-	pc, file, line, _ := runtime.Caller(skip)
-	lineNumber := ""
+	pc, file, line, _ = runtime.Caller(skip)
+	lineNumber = ""
 	if f.Line {
 		lineNumber = fmt.Sprintf("%d", line)
 	}
-	function := runtime.FuncForPC(pc).Name()
-	if strings.LastIndex(function, "sirupsen/logrus.") != -1 {
+	function = runtime.FuncForPC(pc).Name()
+	// if strings.LastIndex(function, "sirupsen/logrus.") != -1 {
+	if (strings.LastIndex(function, "sirupsen/logrus.") != -1) || (strings.LastIndex(function, "gosutils/slogrus.") != -1) {
 		skip++
 		goto start
 	}
