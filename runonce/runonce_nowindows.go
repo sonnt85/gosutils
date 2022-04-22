@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package runonce
@@ -10,7 +11,8 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/sonnt85/gosutils/daemon"
+	"github.com/sonnt85/sdaemon"
+	// "github.com/sonnt85/sdaemon"
 )
 
 func RebornNewProgram(port int, newname string, cloneflags ...bool) bool {
@@ -18,7 +20,7 @@ func RebornNewProgram(port int, newname string, cloneflags ...bool) bool {
 	if len(cloneflags) != 0 {
 		cloneflag = cloneflags[0]
 	}
-	var cntxt = &daemon.Context{
+	var cntxt = &sdaemon.Context{
 		//	PidFileName: "/tmp/sample.pid",
 		PidFilePerm: 0644,
 		LogFileName: "",
