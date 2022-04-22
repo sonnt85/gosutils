@@ -1,10 +1,10 @@
 //  func main() {
-//    job := func() {
+//    jobFunc := func() {
 //	     log.Println("Time's up!")
 //    }
-//    sched.Every(5).Seconds().Run(function)
-//    sched.Every().Day().Run(function)
-//    sched.Every().Sunday().At("08:30").Run(function)
+//    sched.Every(5).ESeconds().Run(jobFunc)
+//    sched.Every().DDay().Run(jobFunc)
+//    sched.Every().ESunday().MWDAt("08:30").Run(jobFunc)
 //  }
 package sched
 
@@ -15,6 +15,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/sonnt85/gotimeutils"
+)
+
+const (
+	EndOfMonth = 0
 )
 
 type scheduled interface {
@@ -64,6 +70,7 @@ func (d *daily) setTime(h, m, s int) {
 
 func (d *daily) nextRun() (time.Duration, error) {
 	now := time.Now()
+
 	year, month, day := now.Date()
 	date := time.Date(year, month, day, d.hour, d.min, d.sec, 0, time.Local)
 	if now.Before(date) {
@@ -83,7 +90,9 @@ func (w *weekly) nextRun() (time.Duration, error) {
 	year, month, day := now.Date()
 	numDays := w.day - now.Weekday()
 	if numDays == 0 {
-		numDays = 7
+		if w.d.hour < now.Hour() || w.d.min < now.Minute() || w.d.sec < now.Second() {
+			numDays = 7
+		}
 	} else if numDays < 0 {
 		numDays += 7
 	}
@@ -91,28 +100,101 @@ func (w *weekly) nextRun() (time.Duration, error) {
 	return date.Sub(now), nil
 }
 
-// Every defines when to run a job. For a recurrent jobs (n seconds/minutes/hours) you
+type monthly struct {
+	day         int
+	d           daily
+	nextTimeRun time.Time
+}
+
+func (m *monthly) nextRunAt() (time.Time, error) {
+	now := time.Now()
+	year, month, day := now.Date()
+	numDays := 0
+	numDayOfThisMonth := gotimeutils.EndOfMonth().Day()
+	if m.day == EndOfMonth {
+		if day == numDayOfThisMonth {
+			if m.d.hour < now.Hour() || m.d.min < now.Minute() || m.d.sec < now.Second() {
+				numDays = gotimeutils.EndOfNextMonth().Day()
+			}
+		} else {
+			numDays = numDayOfThisMonth - day
+		}
+	} else {
+		deltalDays := m.day - day
+		if deltalDays == 0 {
+			if m.d.hour < now.Hour() || m.d.min < now.Minute() || m.d.sec < now.Second() {
+				numDays = numDayOfThisMonth - day + m.day
+			}
+		} else if deltalDays < 0 {
+			numDays = numDayOfThisMonth - day + m.day
+		}
+	}
+
+	date := time.Date(year, month, day+int(numDays), m.d.hour, m.d.min, m.d.sec, 0, time.Local)
+	m.nextTimeRun = date
+	return date, nil
+}
+
+func (m *monthly) nextRun() (time.Duration, error) {
+	now := time.Now()
+	year, month, day := now.Date()
+	numDays := 0
+	numDayOfThisMonth := gotimeutils.EndOfMonth().Day()
+	if m.day == EndOfMonth {
+		if day == numDayOfThisMonth {
+			if m.d.hour < now.Hour() || m.d.min < now.Minute() || m.d.sec < now.Second() {
+				numDays = gotimeutils.EndOfNextMonth().Day()
+			}
+		} else {
+			numDays = numDayOfThisMonth - day
+		}
+	} else {
+		deltalDays := m.day - day
+		if deltalDays == 0 {
+			if m.d.hour < now.Hour() || m.d.min < now.Minute() || m.d.sec < now.Second() {
+				numDays = numDayOfThisMonth - day + m.day
+			}
+		} else if deltalDays < 0 {
+			numDays = numDayOfThisMonth - day + m.day
+		}
+	}
+
+	date := time.Date(year, month, day+int(numDays), m.d.hour, m.d.min, m.d.sec, 0, time.Local)
+	m.nextTimeRun = date
+	return date.Sub(now), nil
+}
+
+//config day of monthly. can run mutiple time
+func (j *Job) MDay(d int) *Job {
+	if j.schedule != nil {
+		if m, ok := j.schedule.(*monthly); ok {
+			m.day = d
+		} else {
+			j.err = errors.New("bad function chaining")
+		}
+	} else {
+		j.schedule = &monthly{day: d}
+	}
+	return j
+}
+
+// Every defines when to run a job. For a recurrent jobs (times seconds/minutes/hours) you
 // should specify the unit and then call to the correspondent period method.
 func Every(times ...int) *Job {
 	switch len(times) {
 	case 0:
 		return &Job{}
-	case 1:
+	default:
 		r := new(recurrent)
 		r.units = times[0]
 		return &Job{schedule: r}
-	default:
-		// Yeah... I don't like it either. But go does not support default
-		// parameters nor method overloading. In an ideal world should
-		// return an error at compile time not at runtime. :/
-		return &Job{err: errors.New("too many arguments in Every")}
 	}
 }
 
-// NotImmediately allows recurrent jobs not to be executed immediatelly after
+// RNotImmediately allows recurrent jobs not to be executed immediatelly after
 // definition. If a job is declared hourly won't start executing until the first hour
 // passed.
-func (j *Job) NotImmediately() *Job {
+func (j *Job) RNotImmediately() *Job {
 	j.Lock() //lock for wrire rj.done
 	defer j.Unlock()
 	rj, ok := j.schedule.(*recurrent)
@@ -126,7 +208,7 @@ func (j *Job) NotImmediately() *Job {
 }
 
 // At lets you define a specific time when the job would be run. Does not work with
-// recurrent jobs.
+// recurrent jobs, work with daily or weekly
 // Time should be defined as a string separated by a colon. Could be used as "08:35:30",
 // "08:35" or "8" for only the hours.
 func (j *Job) At(hourTime string) *Job {
@@ -140,22 +222,26 @@ func (j *Job) At(hourTime string) *Job {
 	}
 	j.Lock()
 	defer j.Unlock()
-	d, ok := j.schedule.(*daily)
-	if !ok {
-		w, ok := j.schedule.(*weekly)
-		if !ok {
-			j.err = errors.New("bad function chaining")
-			return j
-		}
-		w.d.setTime(hour, min, sec)
-		j.schedule = w
-	} else {
+	if d, ok := j.schedule.(*daily); ok {
 		d.setTime(hour, min, sec)
 		j.schedule = d
+	} else {
+		if w, ok := j.schedule.(*weekly); ok {
+			w.d.setTime(hour, min, sec)
+			j.schedule = w
+		} else {
+			if m, ok := j.schedule.(*monthly); ok {
+				m.d.setTime(hour, min, sec)
+			} else {
+				j.err = errors.New("bad function chaining")
+				return j
+			}
+		}
 	}
 	return j
 }
 
+//update every times daily
 func (j *Job) Every(times ...int) (units int, job *Job, err error) {
 	job = j
 	j.Lock()
@@ -185,9 +271,16 @@ func (j *Job) Every(times ...int) (units int, job *Job, err error) {
 
 // Run sets the job to the schedule and returns the pointer to the job so it may be
 // stopped or executed without waiting or an error.
-func (j *Job) Run(f func(*Job)) (*Job, error) {
+func (j *Job) Run(fs ...func(*Job)) (*Job, error) {
 	if j.err != nil {
 		return nil, j.err
+	}
+	if len(fs) == 0 {
+		if j.fn == nil {
+			return j, fmt.Errorf("Missing function")
+		}
+	} else {
+		j.fn = fs[0]
 	}
 	if j.isStart {
 		return j, fmt.Errorf("Already start")
@@ -197,7 +290,6 @@ func (j *Job) Run(f func(*Job)) (*Job, error) {
 	var err error
 	j.Quit = make(chan bool, 1)
 	j.SkipWait = make(chan bool, 1)
-	j.fn = f
 	// Check for possible errors in scheduling
 	next, err = j.schedule.nextRun()
 	if err != nil {
@@ -220,6 +312,46 @@ func (j *Job) Run(f func(*Job)) (*Job, error) {
 		}
 	}(j)
 	return j, nil
+}
+
+func (j *Job) SetFunc(f func(*Job)) *Job {
+	if j.err != nil {
+		return j
+	}
+	j.Lock()
+	if j.Quit == nil {
+		j.Quit = make(chan bool, 1)
+		j.SkipWait = make(chan bool, 1)
+	}
+	j.fn = f
+	j.Unlock()
+	return j
+}
+
+//need call SetFunc before call this function
+func (j *Job) runCheck() error {
+	if j.fn == nil {
+		return fmt.Errorf("Need call SetFunc before call this function")
+	}
+	if j.err != nil {
+		return j.err
+	}
+	if j.isStart {
+		return fmt.Errorf("Already start")
+	}
+	j.isStart = true
+	var next time.Duration
+	var err error
+	// Check for possible errors in scheduling
+	next, err = j.schedule.nextRun()
+	if err != nil {
+		return err
+	}
+	select {
+	case <-time.After(next):
+		go runJob(j)
+	}
+	return nil
 }
 
 func (j *Job) setRunning(running bool) {
@@ -275,6 +407,7 @@ func parseTime(str string) (hour, min, sec int, err error) {
 	return
 }
 
+//Weekly schedule
 func (j *Job) dayOfWeek(d time.Weekday) *Job {
 	if j.schedule != nil {
 		j.err = errors.New("bad function chaining")
@@ -283,45 +416,47 @@ func (j *Job) dayOfWeek(d time.Weekday) *Job {
 	return j
 }
 
-// Monday sets the job to run every Monday.
-func (j *Job) Monday() *Job {
+// WMonday sets the job to run every WMonday.
+func (j *Job) WMonday() *Job {
 	return j.dayOfWeek(time.Monday)
 }
 
-// Tuesday sets the job to run every Tuesday.
-func (j *Job) Tuesday() *Job {
+// WTuesday sets the job to run every WTuesday.
+func (j *Job) WTuesday() *Job {
 	return j.dayOfWeek(time.Tuesday)
 }
 
-// Wednesday sets the job to run every Wednesday.
-func (j *Job) Wednesday() *Job {
+// WWednesday sets the job to run every WWednesday.
+func (j *Job) WWednesday() *Job {
 	return j.dayOfWeek(time.Wednesday)
 }
 
-// Thursday sets the job to run every Thursday.
-func (j *Job) Thursday() *Job {
+// WThursday sets the job to run every WThursday.
+func (j *Job) WThursday() *Job {
 	return j.dayOfWeek(time.Thursday)
 }
 
-// Friday sets the job to run every Friday.
-func (j *Job) Friday() *Job {
+// WFriday sets the job to run every WFriday.
+func (j *Job) WFriday() *Job {
 	return j.dayOfWeek(time.Friday)
 }
 
-// Saturday sets the job to run every Saturday.
-func (j *Job) Saturday() *Job {
+// WSaturday sets the job to run every WSaturday.
+func (j *Job) WSaturday() *Job {
 	return j.dayOfWeek(time.Saturday)
 }
 
-// Sunday sets the job to run every Sunday.
-func (j *Job) Sunday() *Job {
+// WSunday sets the job to run every WSunday.
+func (j *Job) WSunday() *Job {
 	return j.dayOfWeek(time.Sunday)
 }
 
-// Day sets the job to run every day.
-func (j *Job) Day() *Job {
+// DDay sets the job  is daily [run every day (daily - h:m:s).]
+func (j *Job) DDay() *Job {
 	if j.schedule != nil {
-		j.err = errors.New("bad function chaining")
+		if _, ok := j.schedule.(*daily); !ok {
+			j.err = errors.New("bad function chaining")
+		}
 	}
 	j.schedule = &daily{}
 	return j
@@ -339,18 +474,18 @@ func (j *Job) timeOfDay(d time.Duration) *Job {
 
 // Seconds sets the job to run every n Seconds where n was defined in the Every
 // function.
-func (j *Job) Seconds() *Job {
+func (j *Job) ESeconds() *Job {
 	return j.timeOfDay(time.Second)
 }
 
-// Minutes sets the job to run every n Minutes where n was defined in the Every
+// EMinutes sets the job to run every n EMinutes where n was defined in the Every
 // function.
-func (j *Job) Minutes() *Job {
+func (j *Job) EMinutes() *Job {
 	return j.timeOfDay(time.Minute)
 }
 
-// Hours sets the job to run every n Hours where n was defined in the Every function.
-func (j *Job) Hours() *Job {
+// EHours sets the job to run every n EHours where n was defined in the Every function.
+func (j *Job) EHours() *Job {
 	return j.timeOfDay(time.Hour)
 }
 
