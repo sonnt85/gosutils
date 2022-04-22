@@ -68,7 +68,7 @@ func (service *Service) Manage(command string) (byte, error) {
 	default:
 		return ncbyte, nil
 	}
-	return ncbyte, nil
+	// return ncbyte, nil
 }
 
 func NewService(runcunf RunFunc, name, fakename string, autoinstall bool, description string, dependencies []string, args ...string) *Service {
