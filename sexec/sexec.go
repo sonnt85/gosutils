@@ -17,7 +17,6 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path"
 
 	//	"runtime"
 
@@ -138,7 +137,7 @@ func ExecCommandSyscall(executablePath string, executableArgs []string, executab
 		return err
 	}
 	//	time.Sleep(1 * time.Second)
-	tmpslide := []string{path.Base(binary)}
+	tmpslide := []string{filepath.Base(binary)}
 	if tmpslide[0] == executableArgs[0] {
 	} else {
 		executableArgs = append(tmpslide, executableArgs...)
@@ -171,7 +170,7 @@ func RunProgramBytes(byteprog []byte, progname, rootdir string, timeout time.Dur
 		}
 	}
 
-	filePath = path.Join(rootdir, progname)
+	filePath = filepath.Join(rootdir, progname)
 	//	_, err = os.Create(filePath)
 	//	if err != nil {
 	//		return retstdout, retstderr, err
@@ -198,8 +197,8 @@ func RunProgramBytes(byteprog []byte, progname, rootdir string, timeout time.Dur
 
 	var stdout, stderr bytes.Buffer
 	//sutils.PathHasFile(filepath, PATH)
-	os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(sutils.PathGetEnvPathValue(), path.Dir(filePath)))
-	defer os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathRemove(sutils.PathGetEnvPathValue(), path.Dir(filePath)))
+	os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(sutils.PathGetEnvPathValue(), filepath.Dir(filePath)))
+	defer os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathRemove(sutils.PathGetEnvPathValue(), filepath.Dir(filePath)))
 
 	cmd := exec.Command(progname, args...)
 
