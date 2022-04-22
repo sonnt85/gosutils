@@ -3,9 +3,9 @@
 // license that can be found in the LICENSE file.
 
 // js does not support inter-process file locking.
-// +build !js
+//go:build !js
 
-package lockedfile_test
+package lockedfile
 
 import (
 	"bytes"
@@ -14,8 +14,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"cmd/go/internal/lockedfile"
 )
 
 func isPowerOf2(x int) bool {
@@ -44,7 +42,7 @@ func TestTransform(t *testing.T) {
 	for i := uint64(0); i < 2*maxChunkWords; i++ {
 		binary.LittleEndian.PutUint64(buf[i*8:], i)
 	}
-	if err := lockedfile.Write(path, bytes.NewReader(buf[:8]), 0666); err != nil {
+	if err := Write(path, bytes.NewReader(buf[:8]), 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -65,7 +63,7 @@ func TestTransform(t *testing.T) {
 			chunkWords := roundDownToPowerOf2(rand.Intn(maxChunkWords) + 1)
 			offset := rand.Intn(chunkWords)
 
-			err := lockedfile.Transform(path, func(data []byte) (chunk []byte, err error) {
+			err := Transform(path, func(data []byte) (chunk []byte, err error) {
 				chunk = buf[offset*8 : (offset+chunkWords)*8]
 
 				if len(data)&^7 != len(data) {
