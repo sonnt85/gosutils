@@ -28,14 +28,15 @@ func (a *TokenAuth) HeaderValue() string {
 	return "token " + a.Token
 }
 
-type DigestAuth struct {
+type digestAuth struct {
 	*DigestTransport
-	//	Username string
-	//	Password string
+	Username string
+	Password string
 }
 
-func (a *DigestAuth) NewDigestTranport() *DigestTransport {
-	return NewDigestTransport(a.Username, a.Password)
+func (a *digestAuth) HeaderValue() string {
+	// return NewDigestTransport(a.Username, a.Password)
+	return ""
 }
 
 func applyAuth(r *Request) bool {
@@ -46,24 +47,22 @@ func applyAuth(r *Request) bool {
 	if r.Headers == nil {
 		r.Headers = make(map[string]string)
 	}
-	//	t := dac.NewTransport(username, password)
-	//
-	//	resp, err := t.RoundTrip(r)
 
 	switch v := r.Auth.(type) {
 	case authenticator: //BasicAuth, TokenAuth
 		r.Headers["Authorization"] = v.HeaderValue()
 	case string: //req.Auth = "string"
 		r.Headers["Authorization"] = v
-	case DigestAuth:
-		//da := r.Auth.(DigestAuth)
-		//t := da.NewDigestTranport()
-		//t := dac.NewTransport(a.Username, a.Password)
-		//r.Client.Transport
-
+	case digestAuth:
+		if v.DigestTransport == nil {
+			v.DigestTransport = NewDigestTransport(v.Username, v.Password)
+		} else {
+			v.DigestTransport.Username = v.Username
+			v.DigestTransport.Password = v.Password
+		}
+		r.Client.Transport = v.DigestTransport
 	default:
 		log.Info("Authen type", v)
-
 		return false
 		//		panic(fmt.Errorf("unsupported request.Auth type: %T", v))
 	}

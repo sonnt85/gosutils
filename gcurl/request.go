@@ -2,15 +2,13 @@ package gcurl
 
 import (
 	"net/http"
-	"reflect"
 	"strings"
 	"time"
-	//	"github.com/lunny/log"
 )
 
 type Request struct {
-	Client        *http.Client
-	GlobalHeaders map[string]string
+	Client        *http.Client      //resued
+	GlobalHeaders map[string]string //resued
 	Headers       map[string]string
 	Cookies       map[string]string
 	Auth          interface{}
@@ -22,6 +20,7 @@ func NewRequest(client *http.Client) *Request {
 	}
 }
 
+//auto reset headers, cookies, and close body (if is closer) affter return
 func (r *Request) Call(method string, url string, body interface{}, paras ...interface{}) (*Response, error) {
 	timeout := time.Second * 30
 	fixSizePayload := false
@@ -66,14 +65,7 @@ func (r *Request) Call(method string, url string, body interface{}, paras ...int
 	//	log.Warn("payload.contentLength: ", payload.contentLength)
 	applyCookies(req, r)
 	var resp *http.Response
-	if reflect.TypeOf(r.Auth) == reflect.TypeOf(DigestAuth{}) {
-		da := r.Auth.(DigestAuth)
-		dt := da.NewDigestTranport()
-		dt.HTTPClient = r.Client
-		resp, err = dt.RoundTrip(req)
-	} else {
-		resp, err = r.Client.Do(req)
-	}
+	resp, err = r.Client.Do(req)
 
 	if err != nil {
 		return nil, err
@@ -149,7 +141,7 @@ func (r *Request) WithTokenAuth(token string) *Request {
 }
 
 func (r *Request) WithDigestAuth(name, password string) *Request {
-	r.Auth = &DigestAuth{&DigestTransport{Username: name, Password: password}}
+	r.Auth = &digestAuth{Username: name, Password: password}
 	return r
 }
 
