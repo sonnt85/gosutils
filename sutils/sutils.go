@@ -2,13 +2,14 @@ package sutils
 
 import (
 	"context"
-	mrand "math/rand"
+	"math/big"
 	"runtime"
 	"sort"
 
 	"github.com/antchfx/jsonquery"
 	"github.com/antchfx/xmlquery"
 	"github.com/beevik/etree"
+	"github.com/tidwall/sjson"
 
 	"crypto/aes"
 	"crypto/cipher"
@@ -88,16 +89,6 @@ var (
 	NEWLINE    = "\n"
 	Ipv4Regex  = `([0-9]+\.){3}[0-9]+`
 )
-
-type SmartSleepMs struct {
-	nextSleep int64
-	Step, Max int64
-}
-type SmartTimerMs struct {
-	nextSleep int64
-	Step, Max int64
-	timer     *time.Timer
-}
 
 ////progressbar
 const DEFAULT_FORMAT = "\r%s   %3d %%  %d kb %0.2f kb/s %v      "
@@ -262,6 +253,7 @@ func FileWriteStringIfChange(pathfile string, contents []byte) (bool, error) {
 	}
 }
 
+// copy file from src to dst
 func FileCopy(src, dst string) (int64, error) {
 	sourceFileStat, err := os.Stat(src)
 	if err != nil {
@@ -635,12 +627,18 @@ func str2Sha1(data string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+func Int64ToBytes(number int64) []byte {
+	big := new(big.Int)
+	big.SetInt64(number)
+	return big.Bytes()
+}
+
 func TokenCreate(key int) string {
 	if key == 0 {
 		key = 1985
 	}
 	nowtimestam := time.Now().Unix() + int64(key)
-	return CreateSha1([]byte(string(nowtimestam)))
+	return CreateSha1(Int64ToBytes(nowtimestam))
 }
 
 func TokenIsMatch(key int, token string) bool {
@@ -805,11 +803,11 @@ func FindFileWithExt(pathS, ext string) (files []string) {
 		return nil
 	})
 
-	for i, _ := range files {
+	for i, v := range files {
 		regx := sregexp.New("^" + pathR)
 		regx.Regexp()
 		//		files[i] = pathS + strings.TrimLeft(files[i], pathR)
-		files[i] = regx.ReplaceAllString(files[i], pathS)
+		files[i] = regx.ReplaceAllString(v, pathS)
 		//		files[i] = strings.Replace(files[i], pathR, pathS, 1)
 	}
 	return files
@@ -1020,6 +1018,10 @@ func JsonGetPathNode(node *jsonquery.Node) string {
 	return retstr
 }
 
+func JsonSet(jsonstring string, elementPath string, val any) (string, error) {
+	return sjson.Set(jsonstring, elementPath, val)
+}
+
 func JsonStringFindElements(strjson *string, pathSearch string) (map[string]string, error) {
 	var retmap = map[string]string{}
 	doc, err := jsonquery.Parse(strings.NewReader(*strjson))
@@ -1031,6 +1033,9 @@ func JsonStringFindElements(strjson *string, pathSearch string) (map[string]stri
 	nodes, err := jsonquery.QueryAll(doc, pathSearch)
 	if err != nil {
 		return retmap, err
+	}
+	if len(nodes) == 0 {
+		return retmap, errors.New("missing keypath")
 	}
 	//	found := false
 	//	fmt.Println("scan nodes", err)
@@ -1470,49 +1475,6 @@ func EmailSend(smtphost, usermail, password, from, subject string, to []string, 
 	return err
 }
 
-func NewSmartSleep(Step, Max int64) *SmartSleepMs {
-	return &SmartSleepMs{
-		Max:       Max,
-		Step:      Step,
-		nextSleep: 0,
-	}
-}
-
-func (ss *SmartSleepMs) NextSleep() {
-	defer func() {
-		ss.nextSleep += ss.Step
-	}()
-
-	if ss.nextSleep >= ss.Max {
-		ss.nextSleep = 0
-	}
-	time.Sleep((time.Duration(ss.nextSleep) * time.Millisecond))
-}
-
-func NewSmartTimerMs(Step, Max int64) *SmartTimerMs {
-	return &SmartTimerMs{
-		Max:       Max,
-		Step:      Step,
-		nextSleep: 0,
-		timer:     time.NewTimer(0),
-	}
-}
-
-func (ss *SmartTimerMs) GetChannel() <-chan time.Time {
-	return ss.timer.C
-}
-
-func (ss *SmartTimerMs) NextDuration() {
-	defer func() {
-		ss.nextSleep += ss.Step
-	}()
-
-	if ss.nextSleep >= ss.Max {
-		ss.nextSleep = 0
-	}
-	ss.timer.Reset((time.Duration(ss.nextSleep) * time.Millisecond))
-}
-
 func TeeReadWriter(cmd_stdin_pipe io.Writer, cmd_stdoout_pipe, cmd_stderr_pipe io.Reader, ptyFile io.ReadWriter, ptyErr, tee io.Writer, closefunc func()) {
 	var once sync.Once
 	stdout_pr, stdout_pw := io.Pipe()
@@ -1633,12 +1595,12 @@ func CopyReadWriters(a, b io.ReadWriter, closefunc func()) {
 func GetExecPath() (pathexe string, err error) {
 	pathexe, err = os.Executable()
 	if err != nil {
-		log.Println("Cannot  get binary")
+		// log.Println("Cannot  get binary")
 		return "", err
 	}
 	pathexe, err = filepath.EvalSymlinks(pathexe)
 	if err != nil {
-		log.Println("Cannot  get binary")
+		// log.Println("Cannot  get binary")
 		return "", err
 	}
 	return
@@ -1730,23 +1692,6 @@ func TimeTrack(start time.Time, fname ...string) time.Duration {
 
 	log.Warn(fmt.Sprintf("TimeTrack %s took %s", name, elapsed))
 	return elapsed
-}
-
-func RandRangeInterger(min, max int) int {
-	mrand.Seed(time.Now().UnixNano())
-	rand := max - min
-	return mrand.Intn(rand) + min
-}
-
-func SleepRandMill(minxms, maxms int) {
-	mrand.Seed(time.Now().UnixNano())
-	randms := maxms - minxms
-	n := mrand.Intn(randms) // n will be between 0 and 10
-	time.Sleep(time.Duration(n+minxms) * time.Millisecond)
-}
-
-func SleepMaxMill(maxms int) {
-	SleepRandMill(0, maxms)
 }
 
 func StructGetFieldFromName(it *interface{}, fieldName string) interface{} {
