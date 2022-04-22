@@ -15,14 +15,16 @@ var (
 	bcopy = bufcopy.New()
 )
 
-// peer represents a vnc proxy peer
+// Peer represents a vnc proxy Peer
 // with a websocket connection and a vnc backend connection
-type peer struct {
-	source *websocket.Conn
-	target net.Conn
+type Peer struct {
+	source    *websocket.Conn
+	target    net.Conn
+	Token     string
+	ConnectAt time.Time
 }
 
-func NewPeer(ws *websocket.Conn, addr string) (*peer, error) {
+func NewPeer(ws *websocket.Conn, addr, token string) (*Peer, error) {
 	if ws == nil {
 		return nil, errors.New("websocket connection is nil")
 	}
@@ -42,14 +44,16 @@ func NewPeer(ws *websocket.Conn, addr string) (*peer, error) {
 		return nil, errors.Wrap(err, "set vnc backend connection keepalive period failed")
 	}
 
-	return &peer{
-		source: ws,
-		target: c,
+	return &Peer{
+		source:    ws,
+		target:    c,
+		Token:     token,
+		ConnectAt: time.Now(),
 	}, nil
 }
 
 // ReadSource copy source stream to target connection
-func (p *peer) ReadSource() error {
+func (p *Peer) ReadSource() error {
 	if _, err := bcopy.Copy(p.target, p.source); err != nil {
 		return errors.Wrapf(err, "copy source(%v) => target(%v) failed", p.source.RemoteAddr(), p.target.RemoteAddr())
 	}
@@ -57,7 +61,7 @@ func (p *peer) ReadSource() error {
 }
 
 // ReadTarget copys target stream to source connection
-func (p *peer) ReadTarget() error {
+func (p *Peer) ReadTarget() error {
 	if _, err := bcopy.Copy(p.source, p.target); err != nil {
 		return errors.Wrapf(err, "copy target(%v) => source(%v) failed", p.target.RemoteAddr(), p.source.RemoteAddr())
 	}
@@ -65,7 +69,7 @@ func (p *peer) ReadTarget() error {
 }
 
 // Close close the websocket connection and the vnc backend connection
-func (p *peer) Close() {
+func (p *Peer) Close() {
 	p.source.Close()
 	p.target.Close()
 }
