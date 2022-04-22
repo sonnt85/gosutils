@@ -3,10 +3,13 @@ package goreaper
 /*  Note:  This is a *nix only implementation.  */
 
 //  Prefer #include style directives.
-import "fmt"
-import "os"
-import "os/signal"
-import "syscall"
+
+import (
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+)
 
 type Config struct {
 	Pid              int
@@ -39,6 +42,7 @@ func sigChildHandler(notifications chan os.Signal) {
 } /*  End of function  sigChildHandler.  */
 
 //  Be a good parent - clean up behind the children.
+
 func reapChildren(config Config) {
 	var notifications = make(chan os.Signal, 1)
 
