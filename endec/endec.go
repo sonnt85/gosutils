@@ -7,7 +7,10 @@ import (
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rand"
+	"errors"
 	"fmt"
+	"math"
+	"math/big"
 	"strings"
 
 	//	"encoding/base64"
@@ -26,7 +29,7 @@ func CreateHash(key []byte) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
-func EncryptHash(data []byte, passphrase []byte) (retbytes []byte, err error) {
+func EncrypBytes(data []byte, passphrase []byte) (retbytes []byte, err error) {
 	block, _ := aes.NewCipher([]byte(CreateHash(passphrase)))
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
@@ -40,7 +43,38 @@ func EncryptHash(data []byte, passphrase []byte) (retbytes []byte, err error) {
 	return ciphertext, nil
 }
 
-func DecryptHash(data []byte, passphrase []byte) (retbytes []byte, err error) {
+func EncrypBytesToString(data []byte, passphrase []byte) (retbstring string, err error) {
+	var gcm cipher.AEAD
+	block, _ := aes.NewCipher([]byte(CreateHash(passphrase)))
+	gcm, err = cipher.NewGCM(block)
+	if err != nil {
+		return
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return
+	}
+	ciphertext := gcm.Seal(nonce, nonce, data, nil)
+
+	return base64.RawStdEncoding.EncodeToString(ciphertext), nil
+}
+
+//enctyp file filename to byte array use hash
+func EncryptBytesToFile(filename string, data []byte, passphrase []byte) (err error) {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	byteread, err := EncrypBytes(data, passphrase)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(byteread)
+	return err
+}
+
+func DecryptBytes(data []byte, passphrase []byte) (retbytes []byte, err error) {
 	key := []byte(CreateHash(passphrase))
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -51,6 +85,9 @@ func DecryptHash(data []byte, passphrase []byte) (retbytes []byte, err error) {
 		return retbytes, err
 	}
 	nonceSize := gcm.NonceSize()
+	if len(data) < (nonceSize + 1) {
+		return retbytes, errors.New("data length not guaranteed")
+	}
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
@@ -59,47 +96,60 @@ func DecryptHash(data []byte, passphrase []byte) (retbytes []byte, err error) {
 	return plaintext, nil
 }
 
-func EncryptHashFile(filename string, data []byte, passphrase []byte) (err error) {
-	f, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	byteread, err := EncryptHash(data, passphrase)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(byteread)
-	return err
+func Base64Encode(data []byte) string {
+	return base64.RawStdEncoding.EncodeToString(data)
 }
 
-func DecryptFile(filename string, passphrase []byte) (retbytes []byte, err error) {
+func Base64Decode(datastr string) ([]byte, error) {
+	return base64.RawStdEncoding.DecodeString(datastr)
+}
+
+func DecryptBytesFromString(datastr string, passphrase []byte) (retbytes []byte, err error) {
+	data, err := base64.RawStdEncoding.DecodeString(datastr)
+	return DecryptBytes(data, passphrase)
+}
+
+//decryp file filename to byte array use hash
+func DecryptFileToBytes(filename string, passphrase []byte) (retbytes []byte, err error) {
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return retbytes, err
 	}
-	return DecryptHash(data, passphrase)
+	return DecryptBytes(data, passphrase)
+}
+
+//decryp file filename to byte array use hash
+func DecryptFileToFile(inputFile, outputFile string, passphrase []byte) (err error) {
+	data, err := ioutil.ReadFile(inputFile)
+	if err != nil {
+		return err
+	}
+	var inputInfo os.FileInfo
+	inputInfo, err = os.Stat(inputFile)
+	if err != nil {
+		return
+	}
+	data, err = DecryptBytes(data, passphrase)
+	if err != nil {
+		return err
+	}
+	err = ioutil.WriteFile(outputFile, data, inputInfo.Mode().Perm())
+	return
 }
 
 func StringSimpleEncrypt(input, key string) (output string) {
 	for i := 0; i < len(input); i++ {
 		output += string(input[i] ^ key[i%len(key)])
 	}
-	output = base64.StdEncoding.EncodeToString([]byte(output))
-	return strings.TrimRight(output, "=")
+	output = base64.RawStdEncoding.EncodeToString([]byte(output))
+	return
+	// return strings.TrimRight(output, "=")
 }
 
 func StringSimpleDecrypt(input, key string) (output string, err error) {
 	data := []byte{}
-	input = strings.TrimRight(input, "=")
-	for i := 0; i < 3; i++ {
-		data, err = base64.StdEncoding.DecodeString(input)
-		if err == nil {
-			break
-		} else {
-			input = input + "="
-		}
-	}
+	// data, err = base64.StdEncoding.DecodeString(input)
+	data, err = base64.RawStdEncoding.DecodeString(input)
 	if err != nil {
 		return "", err
 	}
@@ -110,7 +160,7 @@ func StringSimpleDecrypt(input, key string) (output string, err error) {
 	return output, nil
 }
 
-func StringZip(input []byte) (retstring string, err error) {
+func BytesZipToString(input []byte) (retstring string, err error) {
 	var b bytes.Buffer
 	gz := gzip.NewWriter(&b)
 	if _, err = gz.Write([]byte(input)); err != nil {
@@ -122,14 +172,14 @@ func StringZip(input []byte) (retstring string, err error) {
 	if err = gz.Close(); err != nil {
 		return
 	}
-	retstring = base64.StdEncoding.EncodeToString(b.Bytes())
+	retstring = base64.RawStdEncoding.EncodeToString(b.Bytes())
 	return strings.TrimRight(retstring, "="), nil
 }
 
 func StringUnzip(input string) (data []byte, err error) {
 	input = strings.TrimRight(input, "=")
 	for i := 0; i < 3; i++ {
-		data, err = base64.StdEncoding.DecodeString(input)
+		data, err = base64.RawStdEncoding.DecodeString(input)
 		if err == nil {
 			break
 		} else {
@@ -149,7 +199,52 @@ func StringUnzip(input string) (data []byte, err error) {
 	}
 }
 
-func CompressFile(dst, src string, removeSrc bool) (err error) {
+func gunzipWrite(w io.Writer, data []byte) error {
+	// Write gzipped data to the client
+	gr, err := gzip.NewReader(bytes.NewBuffer(data))
+	defer gr.Close()
+	data, err = ioutil.ReadAll(gr)
+	if err != nil {
+		return err
+	}
+	w.Write(data)
+	return nil
+}
+
+func GunzipFile(newfilename, gzipfilePath string, removeZipFile bool) (err error) {
+	var gzipfile, writer *os.File
+	var reader *gzip.Reader
+	defer func() {
+		if err == nil && removeZipFile {
+			err = os.Remove(gzipfilePath)
+		}
+	}()
+	gzipfile, err = os.Open(gzipfilePath)
+
+	if err != nil {
+		return
+	}
+
+	reader, err = gzip.NewReader(gzipfile)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	defer reader.Close()
+
+	writer, err = os.Create(newfilename)
+
+	if err != nil {
+		return
+	}
+
+	defer writer.Close()
+
+	_, err = io.Copy(writer, reader)
+	return
+}
+
+func ZipFile(dst, src string, removeSrc bool, compressLevel ...int) (err error) {
 	var fw, fr *os.File
 	fr, err = os.Open(src)
 	if err != nil {
@@ -162,12 +257,22 @@ func CompressFile(dst, src string, removeSrc bool) (err error) {
 		}
 	}()
 
-	fw, err = os.Create(dst)
+	var inputInfo os.FileInfo
+	inputInfo, err = os.Stat(src)
+	if err != nil {
+		return
+	}
+	fw, err = os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, inputInfo.Mode().Perm())
+	// fw, err = os.Create(dst)
 	if err != nil {
 		return err
 	}
 	defer fw.Close()
-	w := gzip.NewWriter(fw)
+	clv := 9
+	if len(compressLevel) != 0 && (compressLevel[0] <= gzip.BestCompression && compressLevel[0] >= gzip.HuffmanOnly) { //auto compressLevel
+		clv = compressLevel[0]
+	}
+	w, _ := gzip.NewWriterLevel(fw, clv)
 	if _, err = io.Copy(w, fr); err != nil {
 		return err
 	}
@@ -175,57 +280,56 @@ func CompressFile(dst, src string, removeSrc bool) (err error) {
 	return
 }
 
-// compressLogFile compresses the given log file, removing the
-// uncompressed log file if successful.
-func CompressLogFile(src, dst string) (err error) {
-	f, err := os.Open(src)
+func GenerateRandomBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	_, err := rand.Read(b)
+	// Note that err == nil only if we read len(b) bytes.
 	if err != nil {
-		return fmt.Errorf("failed to open log file: %v", err)
+		return nil, err
 	}
-	defer f.Close()
+	return b, nil
+}
 
-	fi, err := os.Stat(src)
+func RandUnt64() uint64 {
+	val, err := rand.Int(rand.Reader, big.NewInt(int64(math.MaxInt64)))
 	if err != nil {
-		return fmt.Errorf("failed to stat log file: %v", err)
+		return 0
 	}
+	return val.Uint64()
+}
 
-	// if err := chown(dst, fi); err != nil {
-	// 	return fmt.Errorf("failed to chown compressed log file: %v", err)
-	// }
-
-	// If this file already exists, we presume it was created by
-	// a previous attempt to compress the log file.
-	gzf, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fi.Mode())
+func RandUnt32() uint32 {
+	val, err := rand.Int(rand.Reader, big.NewInt(int64(math.MaxInt64)))
 	if err != nil {
-		return fmt.Errorf("failed to open compressed log file: %v", err)
+		return 0
 	}
-	defer gzf.Close()
+	return uint32(val.Uint64())
+}
 
-	gz := gzip.NewWriter(gzf)
+func RandInt32() int32 {
+	return int32(RandUnt32())
+}
 
-	defer func() {
-		if err != nil {
-			os.Remove(dst)
-			err = fmt.Errorf("failed to compress log file: %v", err)
-		}
-	}()
+func RandInt() int {
+	return int(RandUnt32())
+}
 
-	if _, err := io.Copy(gz, f); err != nil {
-		return err
-	}
-	if err := gz.Close(); err != nil {
-		return err
-	}
-	if err := gzf.Close(); err != nil {
-		return err
-	}
+func Randint64() int64 {
+	return int64(RandUnt64())
+}
 
-	if err := f.Close(); err != nil {
-		return err
+func RandRangeInterger(from, to int) int {
+	delta := to - from
+	if delta == 0 {
+		return from
 	}
-	if err := os.Remove(src); err != nil {
-		return err
-	}
+	return RandInt() / delta
+}
 
-	return nil
+func RandRangeInt64(from, to int64) int64 {
+	delta := to - from
+	if delta == 0 {
+		return from
+	}
+	return Randint64() / delta
 }
