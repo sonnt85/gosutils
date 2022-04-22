@@ -7,10 +7,10 @@ import (
 	"context"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	gossh "github.com/gliderlabs/ssh"
+
 	//	sw "github.com/sonnt85/gosutils/shellwords"
+	"github.com/sonnt85/gosutils/slogrus"
 	"github.com/sonnt85/gosutils/sreflect"
 	"github.com/sonnt85/gosutils/sutils"
 	"github.com/sonnt85/gosystem"
@@ -56,6 +56,8 @@ type exitStatusReq struct {
 
 var SSHServer *Server
 
+// var Logger = slogrus.GetDefaultLogger()
+
 //func setWinsizeTerminal(f *os.File, w, h int) {
 //	syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCSWINSZ),
 //		uintptr(unsafe.Pointer(&struct{ h, w, x, y uint16 }{uint16(h), uint16(w), 0, 0})))
@@ -76,7 +78,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 	shellbin := ""
 	shellrunoption := ""
 	//	os.Getenv("SHELL")
-	log.Warn("permistion", s.Permissions())
+	slogrus.Warn("permistion", s.Permissions())
 	//	if len(shellbin) == 0 {
 	if runtime.GOOS == "windows" {
 		shellrunoption = "/c"
@@ -107,7 +109,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 
 	if isPty { //shell
 		var f *os.File
-		log.Printf("\nShell start %s[%s] ...\n", shellbin, ptyReq.Term)
+		slogrus.Printf("\nShell start %s[%s] ...\n", shellbin, ptyReq.Term)
 
 		cmd = exec.Command(shellbin)
 		cmd.Dir = sutils.GetHomeDir()
@@ -116,7 +118,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 		//		term.NewTerminal(c, prompt)
 		//		term := terminal.NewTerminal("", s"")
 		if err != nil {
-			log.Errorln("Can not start shell with tpy: ", err)
+			slogrus.Error("Can not start shell with tpy: ", err)
 			return
 		}
 		//		execClose := func() {
@@ -134,12 +136,12 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				//				pty.Setsize(f, win)
 				pty.SetWinsizeTerminal(f, win.Width, win.Height)
 			}
-			log.Infoln("Exit setWinsizeTerminal")
+			slogrus.Info("Exit setWinsizeTerminal")
 		}()
 
 	} else {
 		if commands[0] == "command" {
-			//			log.Printf("commanraw:[%+v]", s.RawCommand())
+			//			slogrus.Printf("commanraw:[%+v]", s.RawCommand())
 			if runtime.GOOS == "windows" {
 				if commands[1] == "ls" {
 					commands = append([]string{shellbin, shellrunoption}, "dir /b", commands[3])
@@ -161,7 +163,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 
 		if commands[0] == "scmd" {
 			if len(commands) > 1 {
-				log.Info("Run scommand \n", commands)
+				slogrus.Info("Run scommand \n", commands)
 				switch commands[1] {
 				case "reboot":
 					gosystem.Reboot(time.Second * 3)
@@ -176,8 +178,8 @@ func sshSessionShellExecHandle(s gossh.Session) {
 
 		if commands[0] == "scp" {
 			if _, err := exec.LookPath(commands[0]); err != nil { //not found scp
-				defer log.Warn("Exit scp server")
-				log.Warn("Starting scp server ...", commands)
+				defer slogrus.Warn("Exit scp server")
+				slogrus.Warn("Starting scp server ...", commands)
 				scp := new(SecureCopier)
 				if sreflect.SlideHasElem(commands, "-r") {
 					scp.IsRecursive = true
@@ -197,7 +199,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				if sreflect.SlideHasElem(commands, "-t") {
 					scp.dstFile = commands[len(commands)-1]
 					if err := scpFromClient(scp); err != nil {
-						log.Error("Error scpFromClient", err)
+						slogrus.Error("Error scpFromClient", err)
 					}
 					return
 				}
@@ -212,7 +214,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			}
 		}
 
-		log.Infof("\nexec start: %v\n", commands)
+		slogrus.Infof("\nexec start: %v\n", commands)
 		cmd = exec.Command(commands[0], commands[1:]...)
 		cmd.Env = append(cmd.Env, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
 
@@ -224,7 +226,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 
 				f, err := pty.Start(cmd) //start command via pty
 				if err != nil {
-					log.Errorln("Can not start shell with tpy: ", err)
+					slogrus.Error("Can not start shell with tpy: ", err)
 					return
 				}
 				defer f.Close()
@@ -233,12 +235,12 @@ func sshSessionShellExecHandle(s gossh.Session) {
 					for win := range winCh {
 						pty.SetWinsizeTerminal(f, win.Width, win.Height)
 					}
-					log.Infoln("Exit setWinsizeTerminal")
+					slogrus.Info("Exit setWinsizeTerminal")
 				}()
 				go sutils.TeeReadWriterOsFile(f, s.(io.ReadWriter), s.Stderr(), os.Stdout, nil)
 			} else {
 				if nil != sutils.TeeReadWriterCmd(cmd, s.(io.ReadWriter), s.Stderr(), os.Stdout, nil) { //alredy gorountine {
-					log.Errorf("Can not start TeeReadWriterCmd: %v\n", err)
+					slogrus.Errorf("Can not start TeeReadWriterCmd: %v\n", err)
 					return
 				}
 				err = cmd.Start() //start command
@@ -258,21 +260,21 @@ func sshSessionShellExecHandle(s gossh.Session) {
 		}
 
 		if err != nil {
-			log.Errorf("Can not start command: %v\n", err)
+			slogrus.Errorf("Can not start command: %v\n", err)
 			return
 		}
 	}
 
 	err = cmd.Wait()
 	if isPty {
-		log.Infof("\nDone shell secssion [%s]\n", shellbin)
+		slogrus.Infof("\nDone shell secssion [%s]\n", shellbin)
 
 	} else {
-		log.Infof("\nDone exec command %v -> %v\n", s.Command(), commands)
+		slogrus.Infof("\nDone exec command %v -> %v\n", s.Command(), commands)
 	}
 
 	if err != nil {
-		log.Errorf("\nCommand return err: %v\n", err)
+		slogrus.Errorf("\nCommand return err: %v\n", err)
 		s.Exit(getExitCode(err))
 	}
 }
@@ -289,7 +291,7 @@ func getExitCode(err error) (exitCode int) {
 			// in this situation, exit code could not be get, and stderr will be
 			// empty string very likely, so we use the default fail code, and format err
 			// to string and set to stderr
-			log.Printf("\nCould not get exit code for failed program: use default %d\n", defaultFailedCode)
+			slogrus.Printf("\nCould not get exit code for failed program: use default %d\n", defaultFailedCode)
 			exitCode = defaultFailedCode
 			//			if stderr == "" {
 			//				stderr = err.Error()
@@ -328,14 +330,14 @@ func getAuthorizedKeysMap(pupkeys string) map[string]bool {
 func PasswordHandler(c gossh.Context, pass string) bool {
 	if SSHServer.User != "" {
 		if c.User() != SSHServer.User {
-			log.Printf("User %s is not match\n", c.User())
+			slogrus.Printf("User %s is not match\n", c.User())
 			return false
 		}
 	}
 
 	if SSHServer.Password != "" {
 		if string(pass) != SSHServer.Password {
-			log.Printf("Password %s is not match", pass)
+			slogrus.Printf("Password %s is not match", pass)
 			return false
 		}
 	}
@@ -378,7 +380,7 @@ func CreateKeyPairBytes() (publicKey, privateKey []byte) {
 }
 
 func DefaultChannelHandlers(srv *gossh.Server, conn *ssh.ServerConn, newChan ssh.NewChannel, ctx gossh.Context) {
-	log.Info("Default channel handlers ")
+	slogrus.Info("Default channel handlers ")
 
 	//	_, _, err := newChan.Accept()
 	//	if err != nil {
@@ -394,10 +396,10 @@ func DefaultChannelHandlers(srv *gossh.Server, conn *ssh.ServerConn, newChan ssh
 }
 
 func DefaultRequestHandlers(ctx gossh.Context, srv *gossh.Server, req *ssh.Request) (bool, []byte) {
-	log.Info("Default request handlers ", req.Type)
+	slogrus.Info("Default request handlers ", req.Type)
 
 	if req.Type == "keepalive@openssh.com" {
-		log.Info("Client send keepalive@openssh.com")
+		slogrus.Info("Client send keepalive@openssh.com")
 		return true, nil
 	}
 	return false, []byte{}
@@ -415,7 +417,7 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 	} else {
 		server.IdleTimeout = timeout >> 1
 	}
-	//	log.Printf("===============>server: %+v", server)
+	//	slogrus.Printf("===============>server: %+v", server)
 	//	&Server{AddresListen: addr, User: User, Password: keypass}
 	if addr == "" {
 		addr = ":4444"
@@ -431,8 +433,8 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 	server.PasswordHandler = PasswordHandler
 	//	server.HostSigners = [](gossh.Signer)(gossh.NewSignerFromKey(""))
 	server.ConnCallback = func(ctx gossh.Context, conn net.Conn) net.Conn {
-		log.Printf("New ssh connection from %s\n", conn.RemoteAddr().String())
-		//				log.Printf("New ssh connection! %v\n", ctx)
+		slogrus.Printf("New ssh connection from %s\n", conn.RemoteAddr().String())
+		//				slogrus.Printf("New ssh connection! %v\n", ctx)
 		return conn
 	}
 	if len(Pubkeys) > 50 {
@@ -440,16 +442,16 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 	}
 
 	server.ConnectionFailedCallback = gossh.ConnectionFailedCallback(func(conn net.Conn, err error) {
-		log.Println("ConnectionFailedCallback ", err)
+		slogrus.Print("ConnectionFailedCallback ", err)
 	})
 
 	server.LocalPortForwardingCallback = gossh.LocalPortForwardingCallback(func(ctx gossh.Context, dhost string, dport uint32) bool {
-		log.Println("[ssh -L] Accepted forward", dhost, dport)
+		slogrus.Print("[ssh -L] Accepted forward", dhost, dport)
 		return true
 	})
 
 	server.ReversePortForwardingCallback = gossh.ReversePortForwardingCallback(func(ctx gossh.Context, host string, port uint32) bool {
-		log.Println("[ssh -R] attempt to bind", host, port, "granted")
+		slogrus.Print("[ssh -R] attempt to bind", host, port, "granted")
 		return true
 	})
 	server.ChannelHandlers = map[string]gossh.ChannelHandler{
