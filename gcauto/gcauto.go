@@ -15,6 +15,7 @@
 package gcauto
 
 import (
+	"github.com/sonnt85/gosutils/slogrus"
 	"math"
 	"os"
 	"runtime/debug"
@@ -29,7 +30,9 @@ const (
 
 var defaultGCPercent uint32 = 100
 
-func init() {
+func Init() {
+	threshold := TotalMemory() * 70 / 100
+	slogrus.Debug("Init tunning gc: ", threshold)
 	gogcEnv := os.Getenv("GOGC")
 	if len(gogcEnv) != 0 {
 		gogc, err := strconv.ParseInt(gogcEnv, 10, 32)
@@ -40,7 +43,6 @@ func init() {
 	}
 	// limit := 4 * 1024 * 1024 * 1024
 	// threshold := TotalMemory() * uint64(defaultGCPercent) / 100
-	threshold := TotalMemory() * 70 / 100
 
 	Tuning(threshold)
 }
