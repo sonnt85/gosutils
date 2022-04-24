@@ -120,3 +120,7 @@ func FileIWriteable(path string) (isWritable bool) {
 	}
 	return true
 }
+
+func RunMeElevated() (err error) {
+	return nil
+}
