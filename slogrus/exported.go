@@ -7,9 +7,13 @@ import (
 	"runtime/debug"
 
 	"github.com/mattn/go-colorable"
-	"github.com/mattn/go-isatty"
+	"github.com/sonnt85/gosystem"
+
+	// "github.com/mattn/go-isatty"
 	"github.com/sirupsen/logrus"
 )
+
+var defaultTimestampFormat = "2006-01-02T15:04:05.000Z07:00"
 
 //Log Level 0->panic; 1->fatal, 2->error, 3->warn, 4->info, 5->debug, 6->trace
 // type Level uint32
@@ -34,7 +38,8 @@ func New(writer io.Writer) *Slog {
 	return slog
 }
 
-func NewLogFile(logPath string, log_level Level, pretty bool, diableStdout bool, logpath ...string) *Slog {
+//new slog file with default stdout is os.Stderr
+func NewLogFile(logPath string, log_level Level, pretty bool, diableStdout bool, logpath ...interface{}) *Slog {
 	slog := &Slog{
 		Logger: logrus.New(),
 	}
@@ -72,27 +77,40 @@ func (slog *Slog) GetOldLogFiles() (retpaths []string) {
 }
 
 //logPath string, log_level logrus.Level, pretty bool)
-func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool, logpaths ...string) {
-
+func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool, logpaths ...interface{}) {
+	logpath := ""
+	disableMsgJsonOpject := false
+	for _, x := range logpaths {
+		switch v := x.(type) {
+		case string:
+			logpath = v
+		case bool:
+			disableMsgJsonOpject = v
+		}
+	}
 	slog.initted = true
+	slogOutFile, outputIsOsFile := slog.Out.(*os.File)
 	if diableStdout {
 		slog.SetOutput(ioutil.Discard)
-		if stdSlog == slog {
+		if stdSlog == slog { //auto disable os.Stdout if is standard log
 			os.Stdout, _ = os.Open(os.DevNull)
 			os.Stderr, _ = os.Open(os.DevNull)
 		}
 	} else {
-		slog.SetOutput(colorable.NewColorableStdout())
-		colorable.EnableColorsStdout(nil)
+		if outputIsOsFile {
+			slog.SetOutput(colorable.NewColorable(slogOutFile))
+			// colorable.EnableColorsStdout(nil)()
+		}
 	}
 
 	// timeFormat := time.RFC3339 //"2006-01-02T15:04:05Z07:00"
-	timeFormat := "2006-01-02T15:04:05.000Z07:00" //milisecond
-
-	logJsonFormatter := &logrus.JSONFormatter{
-		TimestampFormat:   timeFormat,
-		PrettyPrint:       pretty,
-		DisableHTMLEscape: true,
+	timeFormat := defaultTimestampFormat //milisecond
+	logJsonFormatter := &JSONFormatter{
+		// logJsonFormatter := &logrus.JSONFormatter{
+		TimestampFormat:      timeFormat,
+		PrettyPrint:          pretty,
+		DisableHTMLEscape:    true,
+		DisableMsgJsonOpject: disableMsgJsonOpject,
 	}
 
 	logRuntimeFormatter := &FormatterRuntime{
@@ -103,11 +121,14 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 		// TextToSearchFun: "gosutils.slogrus.",
 	}
 	slog.SetLevel(log_level.Level)
-	if stdSlog == slog { //print to stdout standard
+	if stdSlog == slog { //print to stdout standard, auto disable output if not is terminal
 		if !diableStdout {
-			// fmt.Println("Config standard Log Level: ", log_level)
-			fileprr, ok := stdSlog.Out.(*os.File)
-			if ok && (isatty.IsTerminal(fileprr.Fd()) || isatty.IsCygwinTerminal(fileprr.Fd())) {
+			if outputIsOsFile && gosystem.IsTerminal(slogOutFile.Fd()) {
+				// fmt.Println("Is Terminal")
+
+				// if gosystem.IsTerminalWriter(stdSlog.Out) || (os.Getenv(DEBUGENVNAME) == "yes" && runtime.GOOS == "windows" || gosystem.IsTerminal(os.Stderr.Fd())) {
+				// if gosystem.IsTerminalWriter(stdSlog.Out) {
+				// if (ok && (isatty.IsTerminal(fileprr.Fd()) || isatty.IsCygwinTerminal(fileprr.Fd()))) || (isatty.IsTerminal(stdoutFD) || isatty.IsCygwinTerminal(stdoutFD)) {
 				// fmt.Println("Is Terminal")
 				logStdStandardRuntimeFormatter := *logRuntimeFormatter
 				logTextFormatter := &logrus.TextFormatter{
@@ -118,6 +139,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 				logStdStandardRuntimeFormatter.ChildFormatter = logTextFormatter
 				slog.SetFormatter(&logStdStandardRuntimeFormatter)
 			} else { //disable output if is not terminal
+				// fmt.Println("Not is Terminal")
 				slog.SetOutput(ioutil.Discard)
 			}
 		}
@@ -125,12 +147,12 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 		slog.SetFormatter(logRuntimeFormatter)
 	}
 
-	if len(logpaths) != 0 && len(logpaths[0]) != 0 { //hook rotation
+	if len(logpath) != 0 { //hook rotation
 		if false { //for test only
 			pathMap := PathMap{}
 			for _, level := range logrus.AllLevels {
 				if level < (log_level.Level + 1) {
-					pathMap[level] = logpaths[0]
+					pathMap[level] = logpath
 				}
 			}
 			localFileHook := NewLocalFileHook(
@@ -141,7 +163,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 		}
 
 		rotateFileHook := NewRotateFileHook(RotateFileConfig{
-			Filename:   logpaths[0],
+			Filename:   logpath,
 			MaxSize:    1024, // kbytes
 			MaxBackups: 32,
 			MaxAge:     31,              //days
@@ -160,13 +182,13 @@ func GetStandardLogger() *Slog {
 }
 
 //log for stdout and logfile,
-func InitStandardLogger(log_level Level, pretty bool, diableStdout bool, logpaths ...string) *Slog {
+func InitStandardLogger(log_level Level, pretty bool, diableStdout bool, logpaths ...interface{}) *Slog {
 	if stdSlog.initted {
 		return stdSlog
 	}
-	stdSlog = &Slog{
-		Logger: logrus.StandardLogger(),
-	}
+	// stdSlog = &Slog{
+	// 	Logger: logrus.StandardLogger(),
+	// }
 	initDefaultLog(stdSlog, log_level, pretty, diableStdout, logpaths...)
 	return stdSlog
 }
