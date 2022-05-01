@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/md5"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -15,7 +14,6 @@ import (
 
 	//	"encoding/base64"
 	"encoding/base64"
-	"encoding/hex"
 	"io/ioutil"
 
 	//	"fmt"
@@ -23,14 +21,8 @@ import (
 	"os"
 )
 
-func CreateHash(key []byte) string {
-	hasher := md5.New()
-	hasher.Write([]byte(key))
-	return hex.EncodeToString(hasher.Sum(nil))
-}
-
 func EncrypBytes(data []byte, passphrase []byte) (retbytes []byte, err error) {
-	block, _ := aes.NewCipher([]byte(CreateHash(passphrase)))
+	block, _ := aes.NewCipher(MD5Bytes(passphrase))
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return retbytes, err
@@ -45,7 +37,7 @@ func EncrypBytes(data []byte, passphrase []byte) (retbytes []byte, err error) {
 
 func EncrypBytesToString(data []byte, passphrase []byte) (retbstring string, err error) {
 	var gcm cipher.AEAD
-	block, _ := aes.NewCipher([]byte(CreateHash(passphrase)))
+	block, _ := aes.NewCipher(MD5Bytes(passphrase))
 	gcm, err = cipher.NewGCM(block)
 	if err != nil {
 		return
@@ -75,7 +67,7 @@ func EncryptBytesToFile(filename string, data []byte, passphrase []byte) (err er
 }
 
 func DecryptBytes(data []byte, passphrase []byte) (retbytes []byte, err error) {
-	key := []byte(CreateHash(passphrase))
+	key := MD5Bytes(passphrase)
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return retbytes, err
