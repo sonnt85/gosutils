@@ -89,6 +89,10 @@ func UniqueInts(a *[]int)         { UniqueSlide[int](a) }
 func IntsAreUnique(a *[]int) bool { return SlideAreUnique[int](a) }
 func IntsSort(a *[]int)           { SlideSort[int](a) }
 
+func UniqueUint64s(a *[]uint64)         { UniqueSlide[uint64](a) }
+func Uint64sAreUnique(a *[]uint64) bool { return SlideAreUnique[uint64](a) }
+func Uint64sSort(a *[]uint64)           { SlideSort[uint64](a) }
+
 func UniqueInt64s(a *[]int64)         { UniqueSlide[int64](a) }
 func Int64sAreUnique(a *[]int64) bool { return SlideAreUnique[int64](a) }
 func Int64sSort(a *[]int64)           { SlideSort[int64](a) }

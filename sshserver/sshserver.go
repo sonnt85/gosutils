@@ -5,13 +5,18 @@ import (
 	//	"encoding/hex"
 
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	gossh "github.com/gliderlabs/ssh"
+	"github.com/sirupsen/logrus"
 
 	//	sw "github.com/sonnt85/gosutils/shellwords"
+	"github.com/sonnt85/gofilepath"
 	"github.com/sonnt85/gosutils/slogrus"
 	"github.com/sonnt85/gosutils/sreflect"
+	"github.com/sonnt85/gosutils/sregexp"
 	"github.com/sonnt85/gosutils/sutils"
 	"github.com/sonnt85/gosystem"
 	"golang.org/x/crypto/ssh"
@@ -36,7 +41,10 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
+
+	// "path/filepath"
+	filepath "github.com/sonnt85/gofilepath"
+
 	"runtime"
 	"syscall"
 )
@@ -50,9 +58,9 @@ type Server struct {
 }
 
 // exitStatusReq represents an exit status for "exec" requests - RFC 4254 6.10
-type exitStatusReq struct {
-	ExitStatus uint32
-}
+// type exitStatusReq struct {
+// 	ExitStatus uint32
+// }
 
 var SSHServer *Server
 
@@ -68,39 +76,57 @@ var SSHServer *Server
 func sshSessionShellExecHandle(s gossh.Session) {
 	//	 var cmd *exec.Cmd
 	debugEnable := false
-
+	exitStatus := 0
 	commands := s.Command()
 
 	var cmd *exec.Cmd
 	var err error
 	ptyReq, winCh, isPty := s.Pty()
-	//	defer close(winCh)
+	defer func() {
+		s.Exit(exitStatus)
+		s.CloseWrite()
+		s.Close()
+	}()
 	shellbin := ""
 	shellrunoption := ""
+	pwd := gosystem.Getwd()
 	//	os.Getenv("SHELL")
-	slogrus.Warn("permistion", s.Permissions())
+	// slogrus.Warnf("permistion/path -> %v/%s", s.Permissions(), sutils.PathGetEnvPathValue())
 	//	if len(shellbin) == 0 {
+	TERM := "TERM"
 	if runtime.GOOS == "windows" {
 		shellrunoption = "/c"
 		shellbin = os.Getenv("COMSPEC")
-
-		for k, v := range map[string]string{"cmd": "/c", "powershell": "-c"} {
-			if _, err := exec.LookPath(k); err == nil {
-				shellbin = v
-				shellrunoption = v
-				if len(commands) == 0 {
-					commands = []string{shellbin}
+		TERM = ""
+		if len(shellbin) == 0 {
+			for k, v := range map[string]string{"cmd": "/c", "powershell": "-c"} {
+				if _, err := exec.LookPath(k); err == nil {
+					shellbin = k
+					shellrunoption = v
+					if len(commands) == 0 {
+						commands = []string{shellbin}
+					}
+					break
 				}
-				break
 			}
 		}
-
+		if isPty {
+			if _, err := exec.LookPath("powershelldummy"); err == nil {
+				commands = []string{"powershell"}
+			} else {
+				s.Write([]byte(fmt.Sprintf("not suport pty, you can run with command %s\n", filepath.Base(shellbin))))
+				exitStatus = 2
+				// s.Exit(getExitCode(errors.New("not suport pty, you can run with command " + shellbin)))
+				return
+			}
+		}
 	} else { //linux
 		shellrunoption = "-c"
 		shellbin = os.Getenv("SHELL")
-		for _, v := range []string{"bash", "sh"} {
-			if _, err := exec.LookPath(v); err == nil {
-				shellbin = v
+		shells := []string{"bash", "sh"}
+		for i := 0; i < len(shells); i++ {
+			if _, err := exec.LookPath(shells[i]); err == nil {
+				shellbin = shells[i]
 				break
 			}
 		}
@@ -109,59 +135,143 @@ func sshSessionShellExecHandle(s gossh.Session) {
 
 	if isPty { //shell
 		var f *os.File
-		slogrus.Printf("\nShell start %s[%s] ...\n", shellbin, ptyReq.Term)
+		slogrus.Printf("Shell start %s[%s] ...", shellbin, ptyReq.Term)
 
 		cmd = exec.Command(shellbin)
-		cmd.Dir = sutils.GetHomeDir()
-		cmd.Env = append(cmd.Env, "TERM="+ptyReq.Term, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
+		cmd.Dir = pwd
+		cmd.Env = append(cmd.Env, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
+		if runtime.GOOS != "windows" {
+			cmd.Env = append(cmd.Env, TERM+"="+ptyReq.Term) //TODO, lelect terminal
+		}
+		// else {
+		// 	cmd.Env = append(cmd.Env, TERM+"="+ptyReq.Term)
+		// }
 		f, err := pty.Start(cmd) //start command via pty
-		//		term.NewTerminal(c, prompt)
-		//		term := terminal.NewTerminal("", s"")
+		// term.NewTerminal(cmd, "> ")
+		// term := terminal.NewTerminal(cmd, "> ")
 		if err != nil {
-			slogrus.Error("Can not start shell with tpy: ", err)
-			return
-		}
-		//		execClose := func() {
-		//			s.Close()
-		//		}
-		defer f.Close()
-		if debugEnable {
-			go sutils.TeeReadWriterOsFile(f, s.(io.ReadWriter), s.Stderr(), os.Stdout, nil)
+			slogrus.Error("Swich to run command because can not start shell with pty: ", err)
+			isPty = false
+			shellrunoption = ""
+			commands = []string{shellbin}
 		} else {
-			go sutils.CopyReadWriters(f, s, nil)
+			defer f.Close()
+			if debugEnable {
+				go sutils.TeeReadWriterOsFile(f, s.(io.ReadWriter), s.Stderr(), os.Stdout, nil)
+			} else {
+				go sutils.CopyReadWriters(f, s, nil)
+			}
+
+			go func() { //auto resize
+				for win := range winCh {
+					// pty.Setsize(f, win)
+					pty.SetWinsizeTerminal(f, win.Width, win.Height)
+				}
+				slogrus.Info("Exit setWinsizeTerminal")
+			}()
 		}
 
-		go func() { //auto resize
-			for win := range winCh {
-				//				pty.Setsize(f, win)
-				pty.SetWinsizeTerminal(f, win.Width, win.Height)
-			}
-			slogrus.Info("Exit setWinsizeTerminal")
-		}()
-
-	} else {
+	}
+	if !isPty {
 		if commands[0] == "command" {
 			//			slogrus.Printf("commanraw:[%+v]", s.RawCommand())
-			if runtime.GOOS == "windows" {
-				if commands[1] == "ls" {
-					commands = append([]string{shellbin, shellrunoption}, "dir /b", commands[3])
-				} else if commands[1] == "pwd" {
-					commands = append([]string{shellbin, shellrunoption}, "echo %cd%", commands[3])
+			if runtime.GOOS == "windows" && len(commands) >= 2 {
+				//command ls -aLdf *
+				if commands[1] == "ls" && len(commands) >= 3 {
+					pattern := "*"
+					rootDir := pwd
+					logrus.Debug("command linux: ", commands)
+					var files []string
+					if len(commands) >= 4 {
+						if commands[3] == "/*" {
+							files, err = gofilepath.GetDrives()
+							if err != nil {
+								logrus.Debug(err)
+							}
+						} else {
+							commands[3] = sregexp.New("^/(.)\\*").ReplaceAllString(commands[3], "${1}/*")
+							commands[3] = sregexp.New("^/(.)/").ReplaceAllString(commands[3], "${1}/")
+							commands[3] = strings.Replace(commands[3], `:/`, `/`, 1) //for C:/
+							commands[3] = strings.Replace(commands[3], `/`, `:/`, 1)
+							logrus.Debug("commdn linux after: ", commands)
+							pattern = filepath.Base(commands[3])
+							rootDir = filepath.Dir(commands[3])
+						}
+					}
+					logrus.Debugf("finding: '%s' '%s' ", rootDir, pattern)
+					if len(files) == 0 {
+						files = gofilepath.FindFilesMatchName(rootDir, pattern, 0, true, true)
+					}
+					filesStr := ""
+					var file string
+					var isDir bool
+					for i := 0; i < len(files); i++ {
+						isDir = sutils.PathIsDir(files[i])
+						file = filepath.ToSlash(files[i])
+						if isDir {
+							file = file + "/"
+						}
+
+						file = strings.Replace(file, ":/", `/`, 1) + "\n"
+						// slogrus.Debug(files[i], "->", file)
+						filesStr += file
+					}
+					if len(filesStr) != 0 {
+						s.Write([]byte(filesStr))
+						// var n int
+						// n, err = s.Write([]byte(filesStr))
+						// slogrus.Print(n, err)
+					}
+					return
+				} else if commands[1] == "pwd" { //never call
+					home := filepath.ToSlash(pwd + "/")
+					home = strings.Replace(home, ":/", `/`, 1)
+					logrus.Debug("Sendding home dir fom command: ", home)
+					s.Write([]byte(home))
+					return
 				}
 			} else {
 				commands = append([]string{shellbin, shellrunoption}, s.RawCommand())
 			}
-		}
+		} else if commands[0] == "pwd" && runtime.GOOS == "windows" { //user for autocomplete
+			home := filepath.ToSlash(pwd + "/")
+			home = strings.Replace(home, ":/", `/`, 1)
+			// logrus.Debug("Sendding home dir fom: ", home)
+			s.Write([]byte(home))
+			return
+		} else if commands[0] == "ls" && runtime.GOOS == "windows" {
+			commands = []string{shellbin, shellrunoption, "dir", "/b"}
+			commands = append(commands, commands[1:]...)
+		} else if commands[0] == "scat" {
+			if len(commands) >= 1 {
+				file := filepath.FromSlashSmart(commands[1], true)
+				if !sutils.PathIsFile(file) {
+					file = filepath.Join(sutils.GetHomeDir(), filepath.FromSlash(commands[1]))
+				}
+				if bs, err := os.ReadFile(file); err == nil {
+					s.Write(bs)
+				} else {
+					exitStatus = 2
+				}
+			} else {
+				exitStatus = 2
+			}
+			return
+		} else if commands[0] == "stouch" {
+			if len(commands) >= 1 {
+				file := commands[1]
+				os.Getwd()
+				sutils.TouchFile(file)
+				if f, err := os.Open(file); err == nil {
+					logrus.Info(f.Name())
+					f.Close()
+				}
 
-		if commands[0] == "pwd" && runtime.GOOS == "windows" {
-			commands = append([]string{shellbin, shellrunoption}, "echo %cd%", commands[3])
-		}
-
-		if commands[0] == "ls" && runtime.GOOS == "windows" {
-			commands = append([]string{shellbin, shellrunoption}, "dir /b", commands[3])
-		}
-
-		if commands[0] == "scmd" {
+			} else {
+				exitStatus = 2
+			}
+			return
+		} else if commands[0] == "scmd" {
 			if len(commands) > 1 {
 				slogrus.Info("Run scommand \n", commands)
 				switch commands[1] {
@@ -174,51 +284,58 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				}
 			}
 			return
-		}
+		} else if commands[0] == "scp" {
+			// if _, err := exec.LookPath(commands[0]); err != nil || runtime.GOOS == "windows" { //not found scp, use buil-in
+			defer slogrus.Warn("Exit scp server")
+			slogrus.Warn("Starting scp server ...", commands)
+			scp := new(SecureCopier)
+			if sreflect.SlideHasElem(commands, "-r") {
+				scp.IsRecursive = true
+			} else {
+				scp.IsRecursive = false
+			}
 
-		if commands[0] == "scp" {
-			if _, err := exec.LookPath(commands[0]); err != nil { //not found scp
-				defer slogrus.Warn("Exit scp server")
-				slogrus.Warn("Starting scp server ...", commands)
-				scp := new(SecureCopier)
-				if sreflect.SlideHasElem(commands, "-r") {
-					scp.IsRecursive = true
-				} else {
-					scp.IsRecursive = false
-				}
-
-				if sreflect.SlideHasElem(commands, "-q") {
-					scp.IsQuiet = true
-				} else {
-					scp.IsQuiet = false
-				}
-				scp.IsVerbose = !scp.IsQuiet
-				scp.ignErr = false
-				scp.inPipe = s.(io.WriteCloser)
-				scp.outPipe = s.(io.ReadCloser)
-				if sreflect.SlideHasElem(commands, "-t") {
-					scp.dstFile = commands[len(commands)-1]
-					if err := scpFromClient(scp); err != nil {
-						slogrus.Error("Error scpFromClient", err)
-					}
-					return
-				}
-				if sreflect.SlideHasElem(commands, "-f") {
-					scp.srcFile = commands[len(commands)-1]
-					if err := scpToClient(scp); err != nil {
-
-					}
-					return
+			if sreflect.SlideHasElem(commands, "-q") {
+				scp.IsQuiet = true
+			} else {
+				scp.IsQuiet = false
+			}
+			scp.IsVerbose = !scp.IsQuiet
+			scp.ignErr = false
+			scp.inPipe = s.(io.WriteCloser)
+			scp.outPipe = s.(io.ReadCloser)
+			if sreflect.SlideHasElem(commands, "-t") {
+				scp.dstFile = filepath.FromSlashSmart(commands[len(commands)-1], true)
+				if err := scpFromClient(scp); err != nil {
+					slogrus.Error("Error scpFromClient: ", err)
+					// s.Stderr().Write([]byte(fmt.Sprintf("error scpFromClient: %s\n", err)))
+					exitStatus = 2
 				}
 				return
 			}
+			if sreflect.SlideHasElem(commands, "-f") {
+				scp.srcFile = filepath.FromSlashSmart(commands[len(commands)-1], true)
+				if err := scpToClient(scp); err != nil {
+					slogrus.Error("Error scpToClient: ", err)
+					// s.Stderr().Write([]byte(fmt.Sprintf("error scpToClient: %s\n", err)))
+					exitStatus = 2
+				}
+				return
+			}
+			return
+			// }
+		} else {
+			if _, err := exec.LookPath(commands[0]); err != nil {
+				slogrus.Debug("Run build-in command via shell")
+				commands = append([]string{shellbin, shellrunoption}, commands...)
+			}
 		}
 
-		slogrus.Infof("\nexec start: %v\n", commands)
+		slogrus.Infof("exec start: %v", commands)
 		cmd = exec.Command(commands[0], commands[1:]...)
 		cmd.Env = append(cmd.Env, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
 
-		cmd.Dir = sutils.GetHomeDir()
+		cmd.Dir = pwd
 
 		if debugEnable {
 			if false { //use pty for any command
@@ -227,6 +344,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				f, err := pty.Start(cmd) //start command via pty
 				if err != nil {
 					slogrus.Error("Can not start shell with tpy: ", err)
+					exitStatus = 2
 					return
 				}
 				defer f.Close()
@@ -241,41 +359,48 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			} else {
 				if nil != sutils.TeeReadWriterCmd(cmd, s.(io.ReadWriter), s.Stderr(), os.Stdout, nil) { //alredy gorountine {
 					slogrus.Errorf("Can not start TeeReadWriterCmd: %v\n", err)
+					exitStatus = 2
 					return
 				}
 				err = cmd.Start() //start command
 			}
 		} else {
+			// scp.inPipe = s.(io.WriteCloser)
+			// scp.outPipe = s.(io.ReadCloser)
 			cmd.Stderr = s.Stderr()
 			cmd.Stdout = s
-			inputWriter, err := cmd.StdinPipe()
+			// cmd.Stdin = s
+			var inputWriter io.WriteCloser
+			inputWriter, err = cmd.StdinPipe()
 			if err != nil {
+				exitStatus = 2
 				return
 			}
 			go func() {
 				io.Copy(inputWriter, s)
 				inputWriter.Close()
+				// logrus.Debug("Close inputWriter")
 			}()
 			err = cmd.Start() //start command
 		}
 
 		if err != nil {
-			slogrus.Errorf("Can not start command: %v\n", err)
+			slogrus.Errorf("Can not start command: %v", err)
+			exitStatus = 2
 			return
 		}
 	}
 
 	err = cmd.Wait()
 	if isPty {
-		slogrus.Infof("\nDone shell secssion [%s]\n", shellbin)
-
+		slogrus.Infof("Done shell secssion %v -> %v", s.Command(), commands)
 	} else {
-		slogrus.Infof("\nDone exec command %v -> %v\n", s.Command(), commands)
+		slogrus.Infof("Done exec command %v -> %v", s.Command(), commands)
 	}
 
 	if err != nil {
-		slogrus.Errorf("\nCommand return err: %v\n", err)
-		s.Exit(getExitCode(err))
+		slogrus.Errorf("Command return err: %v", err)
+		exitStatus = getExitCode(err)
 	}
 }
 
@@ -291,7 +416,7 @@ func getExitCode(err error) (exitCode int) {
 			// in this situation, exit code could not be get, and stderr will be
 			// empty string very likely, so we use the default fail code, and format err
 			// to string and set to stderr
-			slogrus.Printf("\nCould not get exit code for failed program: use default %d\n", defaultFailedCode)
+			slogrus.Printf("Could not get exit code for failed program: use default %d", defaultFailedCode)
 			exitCode = defaultFailedCode
 			//			if stderr == "" {
 			//				stderr = err.Error()
@@ -392,7 +517,7 @@ func DefaultChannelHandlers(srv *gossh.Server, conn *ssh.ServerConn, newChan ssh
 	//	}
 
 	//	sess.handleRequests(reqs)
-	return
+	// return
 }
 
 func DefaultRequestHandlers(ctx gossh.Context, srv *gossh.Server, req *ssh.Request) (bool, []byte) {

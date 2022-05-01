@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 
 	xj "github.com/basgys/goxml2json"
@@ -46,7 +47,6 @@ import (
 	"errors"
 	"os/exec"
 	"os/user"
-	"path"
 	"reflect"
 
 	"regexp"
@@ -56,7 +56,6 @@ import (
 	"syscall"
 	"time"
 
-	homedir "github.com/mitchellh/go-homedir"
 	"github.com/rs/xid"
 	"github.com/sonnt85/gosutils/gogrep"
 	"github.com/sonnt85/gosutils/sregexp"
@@ -99,6 +98,21 @@ type ProgressBar struct {
 	Subject   string
 	StartTime time.Time
 	Size      int64
+}
+
+func FileIWriteable(path string) (isWritable bool) {
+	isWritable = false
+
+	if file, err := os.OpenFile(path, os.O_WRONLY, 0666); err == nil {
+		defer file.Close()
+		isWritable = true
+	} else {
+		if os.IsPermission(err) {
+			return false
+		}
+	}
+
+	return
 }
 
 // removeFile removes the specified file. Errors are ignored.
@@ -363,7 +377,7 @@ func WindowsIsAdmin() bool {
 }
 
 func GetHomeDir() (home string) {
-	home, err := homedir.Dir()
+	home, err := os.UserHomeDir()
 	if err == nil {
 		return home
 	} else {
@@ -372,7 +386,7 @@ func GetHomeDir() (home string) {
 }
 
 func SysGetHomeDir() (home string) {
-	home, err := homedir.Dir()
+	home, err := os.UserHomeDir()
 	if err == nil {
 		return home
 	} else {
@@ -471,10 +485,10 @@ func PathRemove(PATH, addpath string) string {
 	//	filepath.ListSeparator
 }
 
-func PATHHasFile(filepath, PATH string) bool {
-	execbasename := path.Base(filepath)
+func PATHHasFile(filePath, PATH string) bool {
+	execbasename := filepath.Base(filePath)
 	for _, val := range strings.Split(PATH, string(os.PathListSeparator)) {
-		if PathIsFile(path.Join(val, execbasename)) {
+		if PathIsFile(filepath.Join(val, execbasename)) {
 			return true
 		}
 	}
@@ -521,9 +535,38 @@ func TempFileCreateInNewTemDir(filename string) string {
 	return filepath.Join(rootdir, filename)
 }
 
+func TempFileCreateInNewTemDirWithContent(filename string, data []byte) string {
+	rootdir, err := ioutil.TempDir("", "system")
+	if err != nil {
+		return ""
+	}
+	fPath := filepath.Join(rootdir, filename)
+	err = os.WriteFile(fPath, data, 0755)
+	if err != nil {
+		os.RemoveAll(rootdir)
+		return ""
+	}
+	return fPath
+}
+
 func TempFileCreate() string {
 	if f, err := ioutil.TempFile("", "system"); err == nil {
 		defer f.Close()
+		return f.Name()
+	} else {
+		return ""
+	}
+}
+
+func TempFileCreateWithContent(data []byte) string {
+	if f, err := ioutil.TempFile("", "system"); err == nil {
+		var n int
+		if n, err = f.Write(data); err != nil && n == len(data) {
+			f.Close()
+			os.Remove(f.Name())
+			return ""
+		}
+		f.Close()
 		return f.Name()
 	} else {
 		return ""
@@ -836,11 +879,11 @@ func FileFindMatchNameRegx(root, pattern string) []string {
 
 func FileFindWithExtRegx(root, pattern string) []string {
 	var matches []string
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
 		if matched, err := filepath.Match(pattern, filepath.Base(path)); err != nil {
@@ -850,6 +893,7 @@ func FileFindWithExtRegx(root, pattern string) []string {
 		}
 		return nil
 	})
+
 	if err != nil {
 		return nil
 	}
@@ -870,8 +914,8 @@ func FindFile(pathS string) (files []string) {
 		return files
 	}
 
-	filepath.Walk(pathS, func(path string, f os.FileInfo, _ error) error {
-		if f != nil && !f.IsDir() {
+	filepath.WalkDir(pathS, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
 			files = append(files, path)
 		}
 		return nil
@@ -917,10 +961,10 @@ func HTTPDownLoadUrl(urlpath, httpmethod, username, password string, insecure_fl
 	return bodyBytes, nil
 }
 
-func HTTPDownLoadUrlToFile(urlpath, username, password string, insecure_flag bool, filepath string, timeouts ...time.Duration) (err error) {
+func HTTPDownLoadUrlToFile(urlpath, username, password string, insecure_flag bool, filePath string, timeouts ...time.Duration) (err error) {
 	// Create the file
 	tmpFile := TempFileCreateInNewTemDir("httpd")
-	defer os.RemoveAll(path.Dir(tmpFile))
+	defer os.RemoveAll(filepath.Dir(tmpFile))
 	out, err := os.Create(tmpFile)
 
 	if err != nil {
@@ -964,7 +1008,7 @@ func HTTPDownLoadUrlToFile(urlpath, username, password string, insecure_flag boo
 		return err
 	}
 
-	return os.Rename(tmpFile, filepath)
+	return os.Rename(tmpFile, filePath)
 }
 
 func HTTPDownLoadUrlToTmp(urlpath, username, password string, insecure_flag bool, timeouts ...time.Duration) (tmpfile string, err error) {
