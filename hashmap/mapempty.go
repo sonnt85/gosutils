@@ -30,7 +30,7 @@ func (hs *MapEmpty[T]) Contains(value T) (ok bool) {
 	hs.RLock()
 	_, ok = hs.m[value]
 	hs.RUnlock()
-	return false
+	return ok
 }
 
 // Remove removes the specified element from this set
