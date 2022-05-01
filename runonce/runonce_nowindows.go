@@ -49,7 +49,7 @@ func RebornNewProgram(port int, newname string, cloneflags ...bool) bool {
 	}
 
 	if child != nil { //current is parrent [firt call]
-		//			updateDeamon()
+		// updateDeamon()
 		return true //exit parrent
 	} else {
 		//current is child run [secon call]

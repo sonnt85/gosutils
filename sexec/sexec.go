@@ -3,6 +3,7 @@ package sexec
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -23,20 +24,36 @@ import (
 	"time"
 )
 
-func ExecCommandShell(command string, timeout time.Duration, redirect2null ...bool) (stdOut, stdErr []byte, err error) {
-	var stdout, stderr bytes.Buffer
-	//	log.Printf("command:%v, timeout:%v", command, timeout)
+func ExecCommandShellEnvTimeout(script string, moreenvs map[string]string, timeout time.Duration) (stdOut, stdErr []byte, err error) {
 	shellbin := ""
 	shellrunoption := []string{}
 
 	if runtime.GOOS == "windows" {
-		shellrunoption = []string{"/c", command}
-
 		if shellbin = os.Getenv("COMSPEC"); shellbin == "" {
 			shellbin = "cmd"
 		}
+		lines := sutils.String2lines(script)
+		if len(lines) > 1 {
+			// exepath := shellwords.Join(command)
+			batfile := sutils.TempFileCreateInNewTemDir("scriptbytes.bat")
+			if len(batfile) != 0 {
+				defer os.RemoveAll(filepath.Dir(batfile))
+			}
+			err = os.WriteFile(batfile, []byte(script), os.FileMode(755))
+			if err != nil {
+				return nil, nil, err
+			}
+			// fmt.Println("================> Run bat file", batfile)
+			// return ExecCommandTimeout(shellbin, timeout, "/c", batfile)
+			return ExecCommandTimeout(batfile, timeout)
+		} else {
+			if len(script) != 0 {
+				shellrunoption = []string{"/c", script}
+			}
+		}
+
 	} else { //linux
-		shellrunoption = []string{"-c", "--", command}
+		shellrunoption = []string{"-c", "--", script}
 		shellbin = os.Getenv("SHELL")
 		for _, v := range []string{"bash", "sh"} {
 			if _, err := exec.LookPath(v); err == nil {
@@ -45,59 +62,61 @@ func ExecCommandShell(command string, timeout time.Duration, redirect2null ...bo
 			}
 		}
 	}
-
-	cmd := exec.Command(shellbin, shellrunoption...)
-
-	if len(redirect2null) != 0 && redirect2null[0] {
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		//			fmt.Println("Wating finish:\n", command)
-	} else {
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
+	if len(shellbin) == 0 {
+		return nil, nil, errors.New("Missing binary shell")
 	}
-	//	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} //for linux only
-
-	err = cmd.Start()
-	if err != nil {
-		return stdOut, stdErr, err
-	}
-
-	if timeout != 0 {
-		ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
-		defer cancelFn()
-
-		go func() {
-			<-ctx.Done()
-			if ctx.Err() == context.DeadlineExceeded {
-				//				log.Printf("Timeout to kill process, %v", cmd.Process.Pid)
-				cmd.Process.Kill()
-				//				syscall.Kill(cmd.Process.Pid, syscall.SIGKILL)
-			}
-		}()
-	}
-
-	err = cmd.Wait()
-	if len(redirect2null) != 0 && redirect2null[0] {
-		return nil, nil, err
-	}
-	//    var result string
-	return stdout.Bytes(), stderr.Bytes(), err
+	// arg = append(shellrunoption, arg...)
+	return ExecCommandEnvTimeout(shellbin, moreenvs, timeout, shellrunoption...)
 }
 
-func ExecCommand(name string, arg ...string) (stdOut, stdErr []byte, err error) {
-	var stdout, stderr bytes.Buffer
+// func ExecCommandShellEnvTimeoutAs(script string, moreenvs map[string]string, timeout time.Duration) (stdOut, stdErr []byte, err error) {
+// }
 
+func ExecCommandShell(script string, timeout time.Duration, redirect2null ...bool) (stdOut, stdErr []byte, err error) {
+	return ExecCommandShellEnvTimeout(script, map[string]string{}, timeout)
+}
+
+func ExecCommandEnvTimeout(name string, moreenvs map[string]string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
+	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(name, arg...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	if len(moreenvs) != 0 {
+		for k, v := range moreenvs {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
 	err = cmd.Start()
 	if err != nil {
 		return stdOut, stdErr, err
 	}
-	err = cmd.Wait()
-	//    var result string
+	if timeout != 0 {
+		ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
+		defer cancelFn()
+		go func() {
+			<-ctx.Done()
+			if ctx.Err() == context.DeadlineExceeded {
+				cmd.Process.Kill()
+			}
+		}()
+		err = cmd.Wait()
+		if ctx.Err() == nil {
+			cancelFn()
+		}
+	} else {
+		err = cmd.Wait()
+	}
 	return stdout.Bytes(), stderr.Bytes(), err
+}
+
+//run command without timeout
+func ExecCommand(name string, arg ...string) (stdOut, stdErr []byte, err error) {
+	return ExecCommandEnvTimeout(name, map[string]string{}, 0, arg...)
+}
+
+//run command with timeout
+func ExecCommandTimeout(name string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
+	return ExecCommandEnvTimeout(name, map[string]string{}, timeout, arg...)
 }
 
 func LookPath(efile string) string {
@@ -108,23 +127,10 @@ func LookPath(efile string) string {
 }
 
 func ExecCommandEnv(name string, moreenvs map[string]string, arg ...string) (stdOut, stdErr []byte, err error) {
-	var stdout, stderr bytes.Buffer
-
-	cmd := exec.Command(name, arg...)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	for k, v := range moreenvs {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-	}
-	err = cmd.Start()
-	if err != nil {
-		return stdOut, stdErr, err
-	}
-	err = cmd.Wait()
-	//    var result string
-	return stdout.Bytes(), stderr.Bytes(), err
+	return ExecCommandEnvTimeout(name, moreenvs, 0, arg...)
 }
 
+//spaw father to  child via syscall, merge executablePath to executableArgs if first executableArgs[0] is diffirence executablePath
 func ExecCommandSyscall(executablePath string, executableArgs []string, executableEnvs []string) error {
 	//  var result string
 	//	executableArgs = os.Args
@@ -150,46 +156,25 @@ func ExecCommandSyscall(executablePath string, executableArgs []string, executab
 	return err
 }
 
-func RunProgramBytes(byteprog []byte, progname, rootdir string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {
-	//	var err error
+func ExecByteTimeOutOld(byteprog []byte, progname, workdir string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {
 	var filePath string
-	//	var isTemdir = false
-	if len(rootdir) == 0 {
-		//		isTemdir = true
-		rootdir, err = ioutil.TempDir("", "system")
+	if len(workdir) == 0 {
+		workdir, err = ioutil.TempDir("", "system")
 		if err != nil {
 			return retstdout, retstderr, err
 		} else {
-			defer os.RemoveAll(rootdir)
+			defer os.RemoveAll(workdir)
 		}
 	} else {
-		if err = os.MkdirAll(rootdir, 0700); err != nil {
+		if err = os.MkdirAll(workdir, 0700); err != nil {
 			return retstdout, retstderr, err
 		} else {
 			defer os.Remove(filePath)
 		}
 	}
 
-	filePath = filepath.Join(rootdir, progname)
-	//	_, err = os.Create(filePath)
-	//	if err != nil {
-	//		return retstdout, retstderr, err
-	//	}
-	//	os.Chmod(filePath, 0744)
-	//	f.Close()
-	//	programBytes := byteprog // read bytes from somewhere
+	filePath = filepath.Join(workdir, progname)
 	err = ioutil.WriteFile(filePath, byteprog, 0755)
-	//	be, err := byteexec.New(byteprog, filePath)
-
-	//	defefunc := func() {
-	//		if isTemdir {
-	//			os.RemoveAll(rootdir)
-	//		} else {
-	//			os.Remove(filePath)
-	//		}
-	//	}
-	//	defer defefunc()
-
 	if err != nil {
 		log.Errorf("Can not create new file to run: %v", err)
 		return retstdout, retstderr, err
@@ -202,32 +187,50 @@ func RunProgramBytes(byteprog []byte, progname, rootdir string, timeout time.Dur
 
 	cmd := exec.Command(progname, args...)
 
-	//	cmd := be.Command(args...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	// cmd is an os/exec.Cmd
+	err = cmd.Start()
+	if err != nil {
+		return retstdout, retstderr, err
+	}
+
 	if timeout != 0 {
 		ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
 		defer cancelFn()
-
 		go func() {
 			<-ctx.Done()
 			if ctx.Err() == context.DeadlineExceeded {
-				log.Printf("timeout to kill process, %v", cmd.Process.Pid)
 				cmd.Process.Kill()
 			}
 		}()
+		err = cmd.Wait()
+		if ctx.Err() == nil {
+			cancelFn()
+		}
+	} else {
+		err = cmd.Wait()
 	}
-
-	//	err = cmd.Run() //block at here
-	err = cmd.Start()
-	//	os.Remove(filePath)
-	//	defefunc()
-	if err != nil {
-		log.Errorf("Can not start cmd: %v", err)
-		//		sutils.FileCopy(filePath, "/tmp/run")
-		return retstdout, retstderr, err
-	}
-	err = cmd.Wait()
 	return stdout.Bytes(), stderr.Bytes(), err
+}
+
+func ExecBytesEnvTimeout(byteprog []byte, name string, moreenvs map[string]string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {
+	var f *os.File
+	f, err = open(byteprog, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer clean(f)
+	return ExecCommandEnvTimeout(f.Name(), moreenvs, timeout, args...)
+}
+
+func ExecBytesEnv(byteprog []byte, name string, moreenvs map[string]string, args ...string) (retstdout, retstderr []byte, err error) {
+	return ExecBytesEnvTimeout(byteprog, name, moreenvs, 0, args...)
+}
+
+func ExecBytesTimeout(byteprog []byte, name string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {
+	return ExecBytesEnvTimeout(byteprog, name, nil, timeout, args...)
+}
+
+func ExecBytes(byteprog []byte, name string, args ...string) (retstdout, retstderr []byte, err error) {
+	return ExecBytesEnvTimeout(byteprog, name, nil, 0, args...)
 }

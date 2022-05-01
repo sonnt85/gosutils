@@ -2,6 +2,8 @@ package runonce
 
 import (
 	"encoding/json"
+	"path/filepath"
+
 	//	"flag"
 	"errors"
 	"fmt"
@@ -18,7 +20,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path"
 
 	log "github.com/sirupsen/logrus"
 
@@ -236,7 +237,7 @@ func (gVar *RunOnceConf) GenerateCmd() (err error) {
 			return err
 		}
 
-		filePath := path.Join(rootdir, gVar.Exename)
+		filePath := filepath.Join(rootdir, gVar.Exename)
 		err = ioutil.WriteFile(filePath, gVar.exebytes, 0755)
 
 		if err != nil {
@@ -244,7 +245,7 @@ func (gVar *RunOnceConf) GenerateCmd() (err error) {
 			return err
 		}
 
-		os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(sutils.PathGetEnvPathValue(), path.Dir(filePath)))
+		os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(sutils.PathGetEnvPathValue(), filepath.Dir(filePath)))
 
 		if err != nil {
 			return err
@@ -274,8 +275,8 @@ func (gVar *RunOnceConf) GenerateCmd() (err error) {
 			if len(tmppath) != 0 {
 				if os.Symlink(gVar.ExeFullPathRuntime, tmppath) == nil {
 					//					log.Println("Use fake name")
-					os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(gVar.PATH, path.Dir(tmppath)))
-					//					os.Setenv("PATH", gVar.PATH+":"+path.Dir(tmppath))
+					os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(gVar.PATH, filepath.Dir(tmppath)))
+					//					os.Setenv("PATH", gVar.PATH+":"+filepath.Dir(tmppath))
 					gVar.ExeFullPathRuntime = tmppath
 					gVar.ExeRealNameRuntime = gVar.Exename
 					//					execPathOrg = gVar.Exename
@@ -441,10 +442,10 @@ func (gVar *RunOnceConf) Run() (err error) {
 					//					Setpgid:    true, // create group pid
 				}
 				//			log.Printf("Staring application '%s'", execPath)
-				err = gVar.cmd.Start()                                                                       //start no block
-				if len(gVar.Exename) != 0 && path.Base(gVar.ExeRealNameRuntime) == path.Base(gVar.Exename) { //fake name
-					os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathRemove(sutils.PathGetEnvPathValue(), path.Dir(gVar.ExeFullPathRuntime)))
-					os.RemoveAll(path.Dir(gVar.ExeFullPathRuntime))
+				err = gVar.cmd.Start()                                                                               //start no block
+				if len(gVar.Exename) != 0 && filepath.Base(gVar.ExeRealNameRuntime) == filepath.Base(gVar.Exename) { //fake name
+					os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathRemove(sutils.PathGetEnvPathValue(), filepath.Dir(gVar.ExeFullPathRuntime)))
+					os.RemoveAll(filepath.Dir(gVar.ExeFullPathRuntime))
 				}
 
 				log.Infof("Reload program: %s %+q [%d]\n", gVar.ExeFullPathRuntime, gVar.Args[:], gVar.cmd.Process.Pid)

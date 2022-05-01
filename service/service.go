@@ -7,13 +7,12 @@ package service
 
 import (
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
 
 	goservice "github.com/kardianos/service"
-	log "github.com/sirupsen/logrus"
+	"github.com/sonnt85/gosutils/slogrus"
 	"github.com/sonnt85/gosutils/sutils"
 )
 
@@ -21,10 +20,11 @@ type Service struct {
 	goservice.Service
 }
 
-type RunFunc = func() error
+type RunFunc = func(args ...string) error
 
 type program struct {
 	Excute RunFunc
+	args   []string
 }
 
 func (p *program) Start(s goservice.Service) error {
@@ -37,11 +37,12 @@ func (p *program) run() {
 	if p.Excute == nil {
 		return
 	}
-	p.Excute()
+	p.Excute(p.args...)
 	// Do work here
 }
-func (p *program) SetRun(rfunc RunFunc) {
+func (p *program) SetRun(rfunc RunFunc, args ...string) {
 	p.Excute = rfunc
+	p.args = args
 	// Do work here
 }
 
@@ -84,12 +85,12 @@ func NewService(runcunf RunFunc, name, fakename string, autoinstall bool, descri
 	exepath := exeorgpath
 
 	if fakename != "" {
-		for _, exedir := range []string{path.Dir(exeorgpath), sutils.GetHomeDir()} {
+		for _, exedir := range []string{filepath.Dir(exeorgpath), sutils.GetHomeDir()} {
 			//			fmt.Println("checking: ", exedir)
 			if !sutils.PathIsDir(exedir) {
 				continue
 			}
-			fakenamepath := path.Join(exedir, fakename)
+			fakenamepath := filepath.Join(exedir, fakename)
 			if runtime.GOOS == "windows" { //not use symlink for window
 				fakenamepath = fakenamepath + ".exe"
 				exepath = fakenamepath
@@ -110,16 +111,16 @@ func NewService(runcunf RunFunc, name, fakename string, autoinstall bool, descri
 			}
 
 			orgwdir, err1 := os.Getwd()
-			if relpath, err := filepath.Rel(path.Dir(fakenamepath), exeorgpath); err == nil && err1 == nil && os.Chdir(path.Dir(fakenamepath)) == nil {
+			if relpath, err := filepath.Rel(filepath.Dir(fakenamepath), exeorgpath); err == nil && err1 == nil && os.Chdir(filepath.Dir(fakenamepath)) == nil {
 				breakflag := false
 				if err := os.Symlink(relpath, fakename); err == nil {
 					exepath = fakenamepath
 					breakflag = true
 				} else {
-					//					fmt.Println("Can not Symlink:", err)
+					slogrus.Print("Can not Symlink:", err)
 				}
 				os.Chdir(orgwdir) //restore work dir
-				//				fmt.Println("relpath: ", relpath)
+				slogrus.Print("relpath: ", relpath)
 				if breakflag {
 					break
 				}
@@ -128,7 +129,7 @@ func NewService(runcunf RunFunc, name, fakename string, autoinstall bool, descri
 					exepath = fakenamepath
 					break
 				} else {
-					//					fmt.Println(err)
+					slogrus.Print(err)
 				}
 			}
 
@@ -151,13 +152,11 @@ func NewService(runcunf RunFunc, name, fakename string, autoinstall bool, descri
 	}
 
 	prg := &program{}
-	prg.SetRun(runcunf)
+	prg.SetRun(runcunf, args...)
 
 	psrvorg, err := goservice.New(prg, svcConfig)
 	if err != nil {
-		if os.Getenv("PLOG") == "yes" {
-			log.Infof("Can not create new service: [%v] \n", err)
-		}
+		slogrus.Infof("Can not create new service: [%v] \n", err)
 		return nil
 	}
 	psrv := &Service{psrvorg}
@@ -168,7 +167,7 @@ func NewService(runcunf RunFunc, name, fakename string, autoinstall bool, descri
 
 		//		if retbyte, _ := psrv.Manage(os.Args[1]); retbyte != 128 {
 		//			if os.Getenv("PLOG") == "yes" {
-		//				log.Infof("CommandOutput: retbyte (%v): [%v] \n", retbyte, err)
+		//				slogrus.Infof("CommandOutput: retbyte (%v): [%v] \n", retbyte, err)
 		//			}
 		//			os.Exit(0)
 		//		}
@@ -176,14 +175,14 @@ func NewService(runcunf RunFunc, name, fakename string, autoinstall bool, descri
 
 	//	logger, err = psrv.Logger(nil)
 	//	if err != nil {
-	//		log.Fatal(err)
+	//		slogrus.Fatal(err)
 	//	}
 	if autoinstall {
 		retbyte, err := psrv.Status()
 		if goservice.StatusUnknown == retbyte || err != nil {
 			err = psrv.Install()
 			if err != nil {
-				log.Error("Cannot install: ", err)
+				slogrus.Error("Cannot install: ", err)
 			}
 		}
 	}

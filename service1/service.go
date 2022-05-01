@@ -1,15 +1,18 @@
-// +build !openbsd, !netbsd, !windows
+//go:build (!openbsd && ignore) || (!netbsd && ignore) || !windows
+// +build !openbsd,ignore !netbsd,ignore !windows
 
 package service1
 
 import (
 	//	"fmt"
 
+	"fmt"
 	"os"
 	"os/exec"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sonnt85/gosutils/slogrus"
 	"github.com/sonnt85/gosutils/sutils"
+	"github.com/sonnt85/sdaemon"
 	"github.com/takama/daemon"
 )
 
@@ -22,7 +25,7 @@ type Service struct {
 }
 
 // Manage by daemon commands or run the daemon
-func (service *Service) Manage(command string) (string, error) {
+func (service *Service) Manage(command string, args []string) (string, error) {
 	switch command {
 	case "install":
 		return service.Install(args...)
@@ -79,9 +82,7 @@ func NewService(name string, autoinstall bool, description string, dependencies 
 	if retstr, err := psrv.ManageOsArgs(); retstr != "" || err != nil {
 		os.Exit(0)
 	} else {
-		if os.Getenv("PLOG") == "yes" {
-			log.Infof("CommandOutput/err: [%s] [%v] \n", retstr, err)
-		}
+		slogrus.Infof("CommandOutput/err: [%s] [%v] \n", retstr, err)
 	}
 
 	if _, err := exec.LookPath("systemctl"); err == nil {
@@ -100,32 +101,30 @@ func NewService(name string, autoinstall bool, description string, dependencies 
 
 			if err := os.Symlink(epath, slinkpath); err != nil {
 				slinkpath = efulpath
-				//				log.Printf("Cannot symlink [use default]: %s %v", efulpath, err)
+				//				slogrus.Printf("Cannot symlink [use default]: %s %v", efulpath, err)
 			}
 		}
 
-		psrv.SetTemplate(`[Unit]
+		psrv.SetTemplate(fmt.Sprintf(`[Unit]
 Description={{.Description}}
 Requires={{.Dependencies}}
 After={{.Dependencies}}
 
 [Service]
-Environment=INSD=yes
+Environment=%s=%s
 Type=simple
 PIDFile=/run/{{.Name}}.pid
 ExecStartPre=/bin/rm -f /run/{{.Name}}.pid
-ExecStart=` + slinkpath + ` {{.Args}}
+ExecStart=%s {{.Args}}
 
 [Install]
 WantedBy=multi-user.target
-`)
+`, sdaemon.GetPData().GetEnvName(), sdaemon.GetPData().GetMainEnvEncrypted(), slinkpath))
 	}
 	if autoinstall {
 		status, err := psrv.Status()
 
-		if os.Getenv("PLOG") == "yes" {
-			log.Infof("Status/err: [%s] [%v] \n", status, err)
-		}
+		slogrus.Infof("Status/err: [%s] [%v] \n", status, err)
 
 		needinstall := false
 		if err != nil {
@@ -134,16 +133,11 @@ WantedBy=multi-user.target
 
 		if needinstall {
 			if k, err := psrv.Install(args...); err == nil { //alway install
-				if os.Getenv("PLOG") == "yes" {
-					log.Infof("Successful install [%v]", k)
-				}
+				slogrus.Infof("Successful install [%v]", k)
 			} else {
-				if os.Getenv("PLOG") == "yes" {
-					log.Errorf("Cannot install service: [%v]\n", err)
-				}
+				slogrus.Errorf("Cannot install service: [%v]\n", err)
 			}
 		}
 	}
-	os.Unsetenv("PLOG")
 	return psrv
 }
