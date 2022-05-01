@@ -218,9 +218,15 @@ func Println(v interface{}, clourFlag ...bool) {
 	}
 }
 
-// Format JSON string with default options.
-func Format(data []byte) ([]byte, error) {
-	return NewFormatter().Format(data)
+// Format []byte with default disable colour.
+func Format(data []byte, clourFlag ...bool) ([]byte, error) {
+	format := NewFormatter()
+	if len(clourFlag) != 0 && clourFlag[0] {
+		format.DisabledColor = true
+	} else {
+		format.DisabledColor = false
+	}
+	return format.Format(data)
 }
 
 // Format JSON string with default options.
@@ -250,4 +256,12 @@ func ToBytes(v interface{}, clourFlag ...bool) []byte {
 	} else {
 		return nil
 	}
+}
+
+func FormatString(str, indent string) (string, error) {
+	var prettyJSON bytes.Buffer
+	if err := json.Indent(&prettyJSON, []byte(str), "", indent); err != nil {
+		return "", err
+	}
+	return prettyJSON.String(), nil
 }
