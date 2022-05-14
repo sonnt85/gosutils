@@ -98,7 +98,7 @@ func (s *Server) Serve(ln net.Listener) error {
 		}
 		go conn.serve()
 	}
-	panic("unreachable")
+	// panic("unreachable")
 }
 
 func (s *Server) newConn(c net.Conn) *Conn {

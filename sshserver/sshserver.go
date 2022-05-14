@@ -22,6 +22,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	//	"github.com/creack/pty"
+
 	"github.com/sonnt85/gosutils/pty"
 
 	//	"github.com/sonnt85/gosutils/simplessh"
@@ -97,7 +98,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 	if runtime.GOOS == "windows" {
 		shellrunoption = "/c"
 		shellbin = os.Getenv("COMSPEC")
-		TERM = ""
+		TERM = "COMSPEC"
 		if len(shellbin) == 0 {
 			for k, v := range map[string]string{"cmd": "/c", "powershell": "-c"} {
 				if _, err := exec.LookPath(k); err == nil {
@@ -111,8 +112,9 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			}
 		}
 		if isPty {
-			if _, err := exec.LookPath("powershelldummy"); err == nil {
-				commands = []string{"powershell"}
+			if _, err := exec.LookPath("powershell"); err == nil {
+				shellbin = "powershell"
+				commands = []string{shellbin}
 			} else {
 				s.Write([]byte(fmt.Sprintf("not suport pty, you can run with command %s\n", filepath.Base(shellbin))))
 				exitStatus = 2
@@ -142,6 +144,8 @@ func sshSessionShellExecHandle(s gossh.Session) {
 		cmd.Env = append(cmd.Env, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
 		if runtime.GOOS != "windows" {
 			cmd.Env = append(cmd.Env, TERM+"="+ptyReq.Term) //TODO, lelect terminal
+		} else {
+			cmd.Env = append(cmd.Env, TERM+"="+shellbin)
 		}
 		// else {
 		// 	cmd.Env = append(cmd.Env, TERM+"="+ptyReq.Term)
@@ -193,7 +197,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 							commands[3] = sregexp.New("^/(.)/").ReplaceAllString(commands[3], "${1}/")
 							commands[3] = strings.Replace(commands[3], `:/`, `/`, 1) //for C:/
 							commands[3] = strings.Replace(commands[3], `/`, `:/`, 1)
-							logrus.Debug("commdn linux after: ", commands)
+							logrus.Debug("command linux after: ", commands)
 							pattern = filepath.Base(commands[3])
 							rootDir = filepath.Dir(commands[3])
 						}
@@ -324,6 +328,17 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			}
 			return
 			// }
+		} else if commands[0] == "rsync" {
+			if _, err := exec.LookPath(commands[0]); err != nil || runtime.GOOS == "windows" { //not found scp, use buil-in
+				// if stats, err := rsyncssh.Rsyncssh(commands, s, s, s.Stderr()); err != nil {
+				// 	slogrus.Error("Error rsync: ", err)
+				// 	exitStatus = 2
+				// } else {
+				// 	slogrus.Debugf("Total read: %s bytes, Total writeten: %d bytes, Total size of files: %d", stats.Read, stats.Written, stats.Size)
+				// }
+				exitStatus = 2
+				return
+			}
 		} else {
 			if _, err := exec.LookPath(commands[0]); err != nil {
 				slogrus.Debug("Run build-in command via shell")
@@ -376,12 +391,14 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				exitStatus = 2
 				return
 			}
-			go func() {
-				io.Copy(inputWriter, s)
-				inputWriter.Close()
-				// logrus.Debug("Close inputWriter")
-			}()
 			err = cmd.Start() //start command
+			if err == nil {
+				go func() {
+					io.Copy(inputWriter, s)
+					inputWriter.Close()
+					// logrus.Debug("Close inputWriter")
+				}()
+			}
 		}
 
 		if err != nil {

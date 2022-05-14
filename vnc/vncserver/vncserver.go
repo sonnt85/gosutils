@@ -22,6 +22,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"image"
 	"image/png"
 	"strconv"
@@ -36,6 +37,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/sonnt85/gosutils/slogrus"
 	"github.com/sonnt85/gosutils/vnc/vncserver/rfb"
 )
 
@@ -60,6 +62,7 @@ func save(img *image.RGBA, filePath string) {
 }
 
 func main() {
+	slogrus.InitStandardLogger(slogrus.LevelTrace, true, false)
 	flag.Parse()
 	n := screenshot.NumActiveDisplays()
 	var err error
@@ -72,7 +75,7 @@ func main() {
 			println("Error")
 			return
 		}
-		save(im, "screen.png")
+		save(im, fmt.Sprintf("screen-%d.png", i))
 		log.Printf("Sart vnc server display %d %dx%d ", i, width, height)
 	}
 

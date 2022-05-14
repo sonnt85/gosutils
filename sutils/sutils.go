@@ -906,7 +906,7 @@ func FindFile(pathS string) (files []string) {
 	}
 
 	if PathIsFile(pathS) {
-		files = append(files, pathS)
+		files = []string{pathS}
 		return files
 	}
 

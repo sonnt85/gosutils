@@ -6,10 +6,13 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	// log "github.com/sirupsen/logrus"
 
+	"github.com/sonnt85/gosutils/endec"
 	"github.com/sonnt85/gosutils/slogrus"
+	"github.com/sonnt85/gosutils/sregexp"
 	"golang.org/x/net/websocket"
 	// "github.com/gorilla/websocket"
 )
@@ -26,7 +29,8 @@ type Config struct {
 
 // Proxy represents vnc proxy
 type Proxy struct {
-	logger          slogrus.Logger
+	logger slogrus.Logger
+	// peernew         hashmap.MapEmpty[*Peer]
 	peers           map[*Peer]struct{}
 	l               sync.RWMutex
 	tokenHandler    TokenHandler
@@ -120,7 +124,43 @@ func (p *Proxy) deletePeer(peer *Peer) {
 }
 
 func (p *Proxy) Peers() map[*Peer]struct{} {
+	p.l.RLock()
+	defer p.l.RUnlock()
 	return p.peers
+}
+
+func (p *Proxy) GetConnectionTimeRegexp(tokenRegexp string) (d map[string]time.Duration, isConnected bool) {
+	ps := p.Peers()
+	d = make(map[string]time.Duration, len(ps))
+	var ok bool
+	var token string
+	for v, _ := range ps {
+		if sregexp.New(tokenRegexp).MatchString(v.Token) {
+			_, ok = d[v.Token]
+			if ok {
+				token = fmt.Sprintf("%s-%d", v.Token, endec.RandInt())
+			} else {
+				token = v.Token
+			}
+			d[token] = time.Since(v.ConnectAt)
+			isConnected = true
+		}
+	}
+	return
+}
+
+func (p *Proxy) GetMaxConnectionTime(token string) (d time.Duration, isConnected bool) {
+	var lastD time.Duration
+	for v, _ := range p.Peers() {
+		if token == v.Token {
+			lastD = time.Since(v.ConnectAt)
+			if d < lastD {
+				d = lastD
+			}
+			isConnected = true
+		}
+	}
+	return
 }
 
 func appendTokens(oldtokens []string, addtoken string, num int) (rettokens []string) {
@@ -136,9 +176,11 @@ func appendTokens(oldtokens []string, addtoken string, num int) (rettokens []str
 
 func (p *Proxy) Tokens() (rettokens []string) {
 	var tmpRet []string
+	p.l.RLock()
 	for i, _ := range p.peers {
 		tmpRet = append(tmpRet, i.Token)
 	}
+	p.l.RUnlock()
 	sort.Strings(tmpRet)
 	cnt := 0
 	lastToken := ""
