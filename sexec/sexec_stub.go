@@ -1,25 +1,18 @@
-//go:build (!windows && !darwin && !linux) || openbsd || netbsd
-// +build !windows,!darwin,!linux openbsd netbsd
+//go:build (!windows && !linux) || openbsd || netbsd
+// +build !windows,!linux openbsd netbsd
 
 package sexec
 
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"syscall"
 	"time"
 )
 
-// func ExecCommandEnvTimeout(name string, moreenvs map[string]string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
-func ExecCommandShellElevated(exe string, showCmd int32, args ...string) (stdOut, stdErr []byte, err error) {
-	return ExecCommandShellElevatedEnvTimeout(exe, showCmd, map[string]string{}, 0, args...)
-}
-
-func ExecCommandShellElevatedEnvTimeout(name string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
+func execCommandShellElevatedEnvTimeout(name string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = &stdout
@@ -53,12 +46,4 @@ func ExecCommandShellElevatedEnvTimeout(name string, showCmd int32, moreenvs map
 	}
 	return stdout.Bytes(), stderr.Bytes(), err
 	// return ExecCommand(exe, args...)
-}
-
-func open(b []byte, name string) (*os.File, error) {
-	return nil, errors.New("not suport")
-}
-
-func clean(f *os.File) error {
-	return f.Close()
 }

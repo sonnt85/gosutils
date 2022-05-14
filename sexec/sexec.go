@@ -5,23 +5,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
-	"runtime"
-	"syscall"
-
-	//	"fmt"
-	//"https://github.com/jpillora/overseer
-	//	"github.com/getlantern/byteexec"
-	log "github.com/sirupsen/logrus"
-	"github.com/sonnt85/gosutils/sutils"
-
 	"io/ioutil"
 	"os"
 	"os/exec"
-
-	//	"runtime"
-
+	"path/filepath"
+	"runtime"
+	"syscall"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/sonnt85/gofilepath"
+	"github.com/sonnt85/gosutils/sutils"
 )
 
 func ExecCommandShellEnvTimeout(script string, moreenvs map[string]string, timeout time.Duration) (stdOut, stdErr []byte, err error) {
@@ -35,17 +29,13 @@ func ExecCommandShellEnvTimeout(script string, moreenvs map[string]string, timeo
 		lines := sutils.String2lines(script)
 		if len(lines) > 1 {
 			// exepath := shellwords.Join(command)
-			batfile := sutils.TempFileCreateInNewTemDir("scriptbytes.bat")
+			batfile := gofilepath.TempFileCreateWithContent([]byte(script), "scriptbytes.bat")
 			if len(batfile) != 0 {
 				defer os.RemoveAll(filepath.Dir(batfile))
+			} else {
+				return nil, nil, errors.New("can not create tmp file")
 			}
-			err = os.WriteFile(batfile, []byte(script), os.FileMode(755))
-			if err != nil {
-				return nil, nil, err
-			}
-			// fmt.Println("================> Run bat file", batfile)
-			// return ExecCommandTimeout(shellbin, timeout, "/c", batfile)
-			return ExecCommandTimeout(batfile, timeout)
+			shellrunoption = []string{"/c", batfile}
 		} else {
 			if len(script) != 0 {
 				shellrunoption = []string{"/c", script}
@@ -63,7 +53,7 @@ func ExecCommandShellEnvTimeout(script string, moreenvs map[string]string, timeo
 		}
 	}
 	if len(shellbin) == 0 {
-		return nil, nil, errors.New("Missing binary shell")
+		return nil, nil, errors.New("missing binary shell")
 	}
 	// arg = append(shellrunoption, arg...)
 	return ExecCommandEnvTimeout(shellbin, moreenvs, timeout, shellrunoption...)
@@ -82,6 +72,7 @@ func ExecCommandEnvTimeout(name string, moreenvs map[string]string, timeout time
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if len(moreenvs) != 0 {
+		cmd.Env = os.Environ()
 		for k, v := range moreenvs {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
@@ -105,6 +96,9 @@ func ExecCommandEnvTimeout(name string, moreenvs map[string]string, timeout time
 		}
 	} else {
 		err = cmd.Wait()
+	}
+	if err != nil {
+		err = fmt.Errorf("error code: [%s], stdout: [%s], stderr: [%s]", err, string(stdOut), string(stdErr))
 	}
 	return stdout.Bytes(), stderr.Bytes(), err
 }
@@ -130,14 +124,51 @@ func ExecCommandEnv(name string, moreenvs map[string]string, arg ...string) (std
 	return ExecCommandEnvTimeout(name, moreenvs, 0, arg...)
 }
 
+func GetExecPath() (pathexe string, err error) {
+	pathexe, err = os.Executable()
+	if err != nil {
+		// log.Println("Cannot  get binary")
+		return "", err
+	}
+	pathexe, err = filepath.EvalSymlinks(pathexe)
+	if err != nil {
+		// log.Println("Cannot  get binary")
+		return "", err
+	}
+	return
+}
+
 //spaw father to  child via syscall, merge executablePath to executableArgs if first executableArgs[0] is diffirence executablePath
 func ExecCommandSyscall(executablePath string, executableArgs []string, executableEnvs []string) error {
 	//  var result string
-	//	executableArgs = os.Args
-	//	executableEnvs = os.Environ()
-	executablePath, _ = filepath.Abs(executablePath)
+	if len(executableArgs) == 0 {
+		executableArgs = make([]string, 0)
+		if len(executablePath) == 0 {
+			executableArgs = os.Args[1:]
+		}
+	}
 
-	binary, err := exec.LookPath(executablePath)
+	if len(executablePath) == 0 {
+		executablePath, _ = GetExecPath()
+	} else {
+		executablePath, _ = filepath.Abs(executablePath)
+	}
+
+	if len(executableEnvs) == 0 {
+		executableEnvs = os.Environ()
+	}
+
+	var binary string
+	var err error
+	binary, err = exec.LookPath(executablePath)
+
+	// if _, err = os.Stat(executablePath); err == nil {
+	// 	binary, err = filepath.Abs(executablePath)
+	// } else {
+	// 	binary, err = exec.LookPath(executablePath)
+	// 	log.Errorf("Error LookPath: %s", err)
+	// }
+
 	if err != nil {
 		log.Errorf("Error: %s", err)
 		return err
@@ -233,4 +264,18 @@ func ExecBytesTimeout(byteprog []byte, name string, timeout time.Duration, args 
 
 func ExecBytes(byteprog []byte, name string, args ...string) (retstdout, retstderr []byte, err error) {
 	return ExecBytesEnvTimeout(byteprog, name, nil, 0, args...)
+}
+
+// exe is empty will run current program
+func ExecCommandShellElevated(exe string, showCmd int32, args ...string) (stdOut, stdErr []byte, err error) {
+	return execCommandShellElevatedEnvTimeout(exe, showCmd, map[string]string{}, 0, args...)
+}
+
+// exe is empty will run current program
+func ExecCommandShellElevatedEnvTimeout(exe string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
+	return execCommandShellElevatedEnvTimeout(exe, showCmd, moreenvs, timeout, args...)
+}
+
+func MakeCmdLine(args []string) string {
+	return makeCmdLine(args)
 }
