@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/mattn/go-colorable"
 )
 
 // Formatter is a struct to format JSON data. `color` is github.com/fatih/color: https://github.com/fatih/color
@@ -71,9 +72,9 @@ func (f *Formatter) Marshal(v interface{}) ([]byte, error) {
 // Marshal marshals and formats JSON data.
 func (f *Formatter) Println(v interface{}) {
 	if bytes, err := f.Marshal(v); err == nil {
-		fmt.Println(string(bytes))
+		fmt.Fprint(colorable.NewColorableStdout(), string(bytes))
 	} else {
-		fmt.Println(v)
+		fmt.Fprint(colorable.NewColorableStdout(), v)
 	}
 }
 
@@ -199,9 +200,9 @@ func (f *Formatter) generateIndent(depth int) string {
 }
 
 // Marshal JSON data with default options.
-func Marshal(v interface{}, clourFlag ...bool) ([]byte, error) {
+func Marshal(v interface{}, disableClourFlag ...bool) ([]byte, error) {
 	format := NewFormatter()
-	if len(clourFlag) != 0 && clourFlag[0] {
+	if len(disableClourFlag) != 0 && disableClourFlag[0] {
 		format.DisabledColor = true
 	} else {
 		format.DisabledColor = false
@@ -210,18 +211,27 @@ func Marshal(v interface{}, clourFlag ...bool) ([]byte, error) {
 }
 
 // Marshal JSON data with default options.
-func Println(v interface{}, clourFlag ...bool) {
-	if str, err := Marshal(v, clourFlag...); err == nil {
-		fmt.Println(string(str))
+func Println(v interface{}, disableClourFlag ...bool) {
+	if str, err := Marshal(v, disableClourFlag...); err == nil {
+		fmt.Fprintln(colorable.NewColorableStdout(), string(str))
 	} else {
-		fmt.Println(v)
+		fmt.Fprintln(colorable.NewColorableStdout(), v)
+	}
+}
+
+// Marshal JSON data with default options.
+func Print(v interface{}, disableClourFlag ...bool) {
+	if str, err := Marshal(v, disableClourFlag...); err == nil {
+		fmt.Fprint(colorable.NewColorableStdout(), string(str))
+	} else {
+		fmt.Fprint(colorable.NewColorableStdout(), v)
 	}
 }
 
 // Format []byte with default disable colour.
-func Format(data []byte, clourFlag ...bool) ([]byte, error) {
+func Format(data []byte, disableClourFlag ...bool) ([]byte, error) {
 	format := NewFormatter()
-	if len(clourFlag) != 0 && clourFlag[0] {
+	if len(disableClourFlag) != 0 && disableClourFlag[0] {
 		format.DisabledColor = true
 	} else {
 		format.DisabledColor = false
@@ -230,9 +240,9 @@ func Format(data []byte, clourFlag ...bool) ([]byte, error) {
 }
 
 // Format JSON string with default options.
-func ToString(v interface{}, clourFlag ...bool) string {
+func ToString(v interface{}, disableClourFlag ...bool) string {
 	format := NewFormatter()
-	if len(clourFlag) != 0 && clourFlag[0] {
+	if len(disableClourFlag) != 0 && disableClourFlag[0] {
 		format.DisabledColor = true
 	} else {
 		format.DisabledColor = false
@@ -244,9 +254,9 @@ func ToString(v interface{}, clourFlag ...bool) string {
 	}
 }
 
-func ToBytes(v interface{}, clourFlag ...bool) []byte {
+func ToBytes(v interface{}, disableClourFlag ...bool) []byte {
 	format := NewFormatter()
-	if len(clourFlag) != 0 && clourFlag[0] {
+	if len(disableClourFlag) != 0 && disableClourFlag[0] {
 		format.DisabledColor = true
 	} else {
 		format.DisabledColor = false
@@ -258,6 +268,7 @@ func ToBytes(v interface{}, clourFlag ...bool) []byte {
 	}
 }
 
+//format json string no colour
 func FormatString(str, indent string) (string, error) {
 	var prettyJSON bytes.Buffer
 	if err := json.Indent(&prettyJSON, []byte(str), "", indent); err != nil {
