@@ -1,13 +1,14 @@
-package shellwords
+package cmdshellwords
 
 import (
-	"github.com/sonnt85/gosutils/shellwords"
 	"go/build"
 	"os"
 	"os/exec"
 	"path"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type testCase struct {
@@ -101,7 +102,7 @@ func TestJoin(t *testing.T) {
 		`sh -c echo\ foo`: {"sh", "-c", "echo foo"},
 	}
 	for expected, input := range testCases {
-		actual := Join(input)
+		actual := Join(input...)
 		assert.Equal(t, expected, actual, "input: %#v, expected: (%s), actual: (%s)", input, expected, actual)
 	}
 }

@@ -1,11 +1,12 @@
-package shellwords
+package cmdshellwords
 
 import (
 	"bytes"
-	//	sw "github.com/mattn/go-shellwords"
 	"regexp"
-	//	sw "github.com/sonnt85/gosutils/shellwords"
 )
+
+var reNeedEscape = regexp.MustCompile(`([^A-Za-z0-9_\-.,:\/@\n])`)
+var reLF = regexp.MustCompile(`\n`)
 
 // Split a string into an array of tokens in the same way the UNIX Bourne shell does.
 func Split(line string) ([]string, error) {
@@ -14,30 +15,9 @@ func Split(line string) ([]string, error) {
 
 // Join builds a command line string from an argument list by joining
 // all elements escaped for Bourne shell and separated by a space.
-func Join1(words []string) string {
-	var buf bytes.Buffer
-	for i, w := range words {
-		if i != 0 {
-			buf.WriteByte(' ')
-		}
-		buf.WriteString(Escape(w))
-	}
-	return buf.String()
-}
-
 func Join(words ...string) string {
-	var buf bytes.Buffer
-	for i, w := range words {
-		if i != 0 {
-			buf.WriteByte(' ')
-		}
-		buf.WriteString(Escape(w))
-	}
-	return buf.String()
+	return join(words...)
 }
-
-var reNeedEscape = regexp.MustCompile(`([^A-Za-z0-9_\-.,:\/@\n])`)
-var reLF = regexp.MustCompile(`\n`)
 
 // Escape escapes a string so that it can be safely used in a Bourne shell command line.
 // Note that a resulted string should be used unquoted and is not intended for use in double quotes nor in single quotes.

@@ -1,13 +1,29 @@
-// +build windows
-
-package shellwords
+package cmdshellwords
 
 import (
 	"errors"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
+
+	"golang.org/x/sys/windows"
 )
+
+func parser(cmd string, p *Parser) ([]string, error) {
+	return windows.DecomposeCommandLine(cmd)
+}
+
+func join(args ...string) string {
+	var s string
+	for _, v := range args {
+		if s != "" {
+			s += " "
+		}
+		s += syscall.EscapeArg(v)
+	}
+	return s
+}
 
 func shellRun(line, dir string) (string, error) {
 	var shell string

@@ -1,62 +1,17 @@
-package shellwords
+//go:build !windows
+// +build !windows
+
+package cmdshellwords
 
 import (
+	"bytes"
 	"errors"
 	"os"
-	"regexp"
+	"os/exec"
 	"strings"
 )
 
-var (
-	ParseEnv      bool = false
-	ParseBacktick bool = false
-)
-
-var envRe = regexp.MustCompile(`\$({[a-zA-Z0-9_]+}|[a-zA-Z0-9_]+)`)
-
-func isSpace(r rune) bool {
-	switch r {
-	case ' ', '\t', '\r', '\n':
-		return true
-	}
-	return false
-}
-
-func replaceEnv(getenv func(string) string, s string) string {
-	if getenv == nil {
-		getenv = os.Getenv
-	}
-
-	return envRe.ReplaceAllStringFunc(s, func(s string) string {
-		s = s[1:]
-		if s[0] == '{' {
-			s = s[1 : len(s)-1]
-		}
-		return getenv(s)
-	})
-}
-
-type Parser struct {
-	ParseEnv      bool
-	ParseBacktick bool
-	Position      int
-	Dir           string
-
-	// If ParseEnv is true, use this for getenv.
-	// If nil, use os.Getenv.
-	Getenv func(string) string
-}
-
-func NewParser() *Parser {
-	return &Parser{
-		ParseEnv:      ParseEnv,
-		ParseBacktick: ParseBacktick,
-		Position:      0,
-		Dir:           "",
-	}
-}
-
-func (p *Parser) Parse(line string) ([]string, error) {
+func parser(line string, p *Parser) ([]string, error) {
 	args := []string{}
 	buf := ""
 	var escaped, doubleQuoted, singleQuoted, backQuote, dollarQuote bool
@@ -210,6 +165,32 @@ loop:
 	return args, nil
 }
 
-func Parse(line string) ([]string, error) {
-	return NewParser().Parse(line)
+func join(words ...string) string {
+	var buf bytes.Buffer
+	for i, w := range words {
+		if i != 0 {
+			buf.WriteByte(' ')
+		}
+		buf.WriteString(Escape(w))
+	}
+	return buf.String()
+}
+
+func shellRun(line, dir string) (string, error) {
+	var shell string
+	if shell = os.Getenv("SHELL"); shell == "" {
+		shell = "/bin/sh"
+	}
+	cmd := exec.Command(shell, "-c", line)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	b, err := cmd.Output()
+	if err != nil {
+		if eerr, ok := err.(*exec.ExitError); ok {
+			b = eerr.Stderr
+		}
+		return "", errors.New(err.Error() + ":" + string(b))
+	}
+	return strings.TrimSpace(string(b)), nil
 }
