@@ -24,14 +24,19 @@ const (
 )
 
 type scheduled interface {
-	nextRun() (time.Duration, error)
+	nextDurationWaitToRun() (time.Duration, error)
+	nextRunAt() (time.Time, error)
 }
+
+// func (sche scheduled) nextDurationWaitToRun() (time.Duration, error) {
+
+// }
 
 // Job defines a running job and allows to stop a scheduled job or run it.
 type Job struct {
 	fn        func(fatherJob *Job)
 	Quit      chan bool
-	SkipWait  chan bool
+	skipWait  chan bool
 	err       error
 	schedule  scheduled
 	isRunning bool
@@ -45,7 +50,7 @@ type recurrent struct {
 	done   bool
 }
 
-func (r *recurrent) nextRun() (time.Duration, error) {
+func (r *recurrent) nextDurationWaitToRun() (time.Duration, error) {
 	if r.units == 0 || r.period == 0 {
 		return 0, errors.New("cannot set recurrent time with 0")
 	}
@@ -54,6 +59,15 @@ func (r *recurrent) nextRun() (time.Duration, error) {
 		return 0, nil
 	}
 	return time.Duration(r.units) * r.period, nil
+}
+
+func (r *recurrent) nextRunAt() (t time.Time, err error) {
+	var d time.Duration
+	d, err = r.nextDurationWaitToRun()
+	if err != nil {
+		return
+	}
+	return time.Now().Add(d), nil
 }
 
 type daily struct {
@@ -68,16 +82,24 @@ func (d *daily) setTime(h, m, s int) {
 	d.sec = s
 }
 
-func (d *daily) nextRun() (time.Duration, error) {
-	now := time.Now()
+func (d *daily) nextDurationWaitToRun() (du time.Duration, err error) {
+	var date time.Time
+	date, err = d.nextRunAt()
+	if err != nil {
+		return
+	}
+	return time.Until(date), nil
+}
 
+func (d *daily) nextRunAt() (time.Time, error) {
+	now := time.Now()
 	year, month, day := now.Date()
 	date := time.Date(year, month, day, d.hour, d.min, d.sec, 0, time.Local)
 	if now.Before(date) {
-		return date.Sub(now), nil
+		return date, nil
 	}
 	date = time.Date(year, month, day+1, d.hour, d.min, d.sec, 0, time.Local)
-	return date.Sub(now), nil
+	return date, nil
 }
 
 type weekly struct {
@@ -85,25 +107,35 @@ type weekly struct {
 	d   daily
 }
 
-func (w *weekly) nextRun() (time.Duration, error) {
+func (w *weekly) nextDurationWaitToRun() (du time.Duration, err error) {
+	var date time.Time
+	date, err = w.nextRunAt()
+	if err != nil {
+		return
+	}
+	return time.Until(date), nil
+}
+
+func (w *weekly) nextRunAt() (time.Time, error) {
 	now := time.Now()
 	year, month, day := now.Date()
 	numDays := w.day - now.Weekday()
 	if numDays == 0 {
-		if w.d.hour < now.Hour() || w.d.min < now.Minute() || w.d.sec < now.Second() {
+		date := time.Date(year, month, day, w.d.hour, w.d.min, w.d.sec, 0, time.Local)
+		if now.After(date) {
 			numDays = 7
 		}
 	} else if numDays < 0 {
 		numDays += 7
 	}
 	date := time.Date(year, month, day+int(numDays), w.d.hour, w.d.min, w.d.sec, 0, time.Local)
-	return date.Sub(now), nil
+	return date, nil
 }
 
 type monthly struct {
-	day         int
-	d           daily
-	nextTimeRun time.Time
+	day int
+	d   daily
+	// nextTimeRun time.Time
 }
 
 func (m *monthly) nextRunAt() (time.Time, error) {
@@ -113,7 +145,8 @@ func (m *monthly) nextRunAt() (time.Time, error) {
 	numDayOfThisMonth := gotimeutils.EndOfMonth().Day()
 	if m.day == EndOfMonth {
 		if day == numDayOfThisMonth {
-			if m.d.hour < now.Hour() || m.d.min < now.Minute() || m.d.sec < now.Second() {
+			date := time.Date(year, month, day, m.d.hour, m.d.min, m.d.sec, 0, time.Local)
+			if now.After(date) {
 				numDays = gotimeutils.EndOfNextMonth().Day()
 			}
 		} else {
@@ -122,7 +155,8 @@ func (m *monthly) nextRunAt() (time.Time, error) {
 	} else {
 		deltalDays := m.day - day
 		if deltalDays == 0 {
-			if m.d.hour < now.Hour() || m.d.min < now.Minute() || m.d.sec < now.Second() {
+			date := time.Date(year, month, day, m.d.hour, m.d.min, m.d.sec, 0, time.Local)
+			if now.After(date) {
 				numDays = numDayOfThisMonth - day + m.day
 			}
 		} else if deltalDays < 0 {
@@ -131,37 +165,16 @@ func (m *monthly) nextRunAt() (time.Time, error) {
 	}
 
 	date := time.Date(year, month, day+int(numDays), m.d.hour, m.d.min, m.d.sec, 0, time.Local)
-	m.nextTimeRun = date
 	return date, nil
 }
 
-func (m *monthly) nextRun() (time.Duration, error) {
-	now := time.Now()
-	year, month, day := now.Date()
-	numDays := 0
-	numDayOfThisMonth := gotimeutils.EndOfMonth().Day()
-	if m.day == EndOfMonth {
-		if day == numDayOfThisMonth {
-			if m.d.hour < now.Hour() || m.d.min < now.Minute() || m.d.sec < now.Second() {
-				numDays = gotimeutils.EndOfNextMonth().Day()
-			}
-		} else {
-			numDays = numDayOfThisMonth - day
-		}
-	} else {
-		deltalDays := m.day - day
-		if deltalDays == 0 {
-			if m.d.hour < now.Hour() || m.d.min < now.Minute() || m.d.sec < now.Second() {
-				numDays = numDayOfThisMonth - day + m.day
-			}
-		} else if deltalDays < 0 {
-			numDays = numDayOfThisMonth - day + m.day
-		}
+func (m *monthly) nextDurationWaitToRun() (du time.Duration, err error) {
+	var date time.Time
+	date, err = m.nextRunAt()
+	if err != nil {
+		return
 	}
-
-	date := time.Date(year, month, day+int(numDays), m.d.hour, m.d.min, m.d.sec, 0, time.Local)
-	m.nextTimeRun = date
-	return date.Sub(now), nil
+	return time.Until(date), nil
 }
 
 //config day of monthly. can run mutiple time
@@ -258,6 +271,7 @@ func (j *Job) Every(times ...int) (units int, job *Job, err error) {
 	case 1:
 		r, ok := j.schedule.(*recurrent)
 		if ok {
+			units = times[0]
 			r.units = times[0]
 		} else {
 			err = fmt.Errorf("job is not recurrent")
@@ -269,6 +283,12 @@ func (j *Job) Every(times ...int) (units int, job *Job, err error) {
 	}
 }
 
+func (j *Job) SkipIfWait() {
+	if !j.IsRunning() {
+		j.skipWait <- true
+	}
+}
+
 // Run sets the job to the schedule and returns the pointer to the job so it may be
 // stopped or executed without waiting or an error.
 func (j *Job) Run(fs ...func(*Job)) (*Job, error) {
@@ -277,21 +297,21 @@ func (j *Job) Run(fs ...func(*Job)) (*Job, error) {
 	}
 	if len(fs) == 0 {
 		if j.fn == nil {
-			return j, fmt.Errorf("Missing function")
+			return j, fmt.Errorf("missing function")
 		}
 	} else {
 		j.fn = fs[0]
 	}
 	if j.isStart {
-		return j, fmt.Errorf("Already start")
+		return j, fmt.Errorf("already start")
 	}
 	j.isStart = true
 	var next time.Duration
 	var err error
 	j.Quit = make(chan bool, 1)
-	j.SkipWait = make(chan bool, 1)
+	j.skipWait = make(chan bool, 1)
 	// Check for possible errors in scheduling
-	next, err = j.schedule.nextRun()
+	next, err = j.schedule.nextDurationWaitToRun()
 	if err != nil {
 		return nil, err
 	}
@@ -301,13 +321,13 @@ func (j *Job) Run(fs ...func(*Job)) (*Job, error) {
 			select {
 			case <-j.Quit:
 				return
-			case <-j.SkipWait:
+			case <-j.skipWait:
 				go runJob(j)
 			case <-time.After(next):
 				go runJob(j)
 			}
 			j.RLock()
-			next, _ = j.schedule.nextRun()
+			next, _ = j.schedule.nextDurationWaitToRun()
 			j.RUnlock()
 		}
 	}(j)
@@ -321,7 +341,7 @@ func (j *Job) SetFunc(f func(*Job)) *Job {
 	j.Lock()
 	if j.Quit == nil {
 		j.Quit = make(chan bool, 1)
-		j.SkipWait = make(chan bool, 1)
+		j.skipWait = make(chan bool, 1)
 	}
 	j.fn = f
 	j.Unlock()
@@ -343,7 +363,7 @@ func (j *Job) runCheck() error {
 	var next time.Duration
 	var err error
 	// Check for possible errors in scheduling
-	next, err = j.schedule.nextRun()
+	next, err = j.schedule.nextDurationWaitToRun()
 	if err != nil {
 		return err
 	}
@@ -407,7 +427,7 @@ func parseTime(str string) (hour, min, sec int, err error) {
 	return
 }
 
-//Weekly schedule
+//Weekly schedule  (Sunday = 0, ...).
 func (j *Job) dayOfWeek(d time.Weekday) *Job {
 	if j.schedule != nil {
 		j.err = errors.New("bad function chaining")
