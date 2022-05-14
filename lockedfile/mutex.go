@@ -5,9 +5,14 @@
 package lockedfile
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
+	"time"
+
+	"github.com/sonnt85/gosutils/endec"
 )
 
 // A Mutex provides mutual exclusion within and across processes by locking a
@@ -22,8 +27,8 @@ import (
 // must not be copied after first use. The Path field must be set before first
 // use and must not be change thereafter.
 type Mutex struct {
-	Path string     // The path to the well-known lock file. Must be non-empty.
-	mu   sync.Mutex // A redundant mutex. The race detector doesn't know about file locking, so in tests we may need to lock something that it understands.
+	Path string       // The path to the well-known lock file. Must be non-empty.
+	mu   sync.RWMutex // A redundant mutex. The race detector doesn't know about file locking, so in tests we may need to lock something that it understands.
 }
 
 // MutexAt returns a new Mutex with Path set to the given non-empty path.
@@ -47,6 +52,7 @@ func (mu *Mutex) Lock() (unlock func(), err error) {
 	if mu.Path == "" {
 		panic("lockedfile.Mutex: missing Path during Lock")
 	}
+	mu.mu.Lock()
 
 	// We could use either O_RDWR or O_WRONLY here. If we choose O_RDWR and the
 	// file at mu.Path is write-only, the call to OpenFile will fail with a
@@ -58,10 +64,138 @@ func (mu *Mutex) Lock() (unlock func(), err error) {
 	if err != nil {
 		return nil, err
 	}
-	mu.mu.Lock()
 
 	return func() {
 		mu.mu.Unlock()
 		f.Close()
 	}, nil
+}
+
+func (mu *Mutex) TryLock() (unlock func(), err error) {
+	if mu.Path == "" {
+		panic("lockedfile.Mutex: missing Path during Lock")
+	}
+	if !mu.mu.TryLock() {
+		return nil, errors.New("can not trylock")
+	}
+	// We could use either O_RDWR or O_WRONLY here. If we choose O_RDWR and the
+	// file at mu.Path is write-only, the call to OpenFile will fail with a
+	// permission error. That's actually what we want: if we add an RLock method
+	// in the future, it should call OpenFile with O_RDONLY and will require the
+	// files must be readable, so we should not let the caller make any
+	// assumptions about Mutex working with write-only files.
+	f, err := OpenFile(mu.Path, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		return nil, err
+	}
+
+	return func() {
+		mu.mu.Unlock()
+		f.Close()
+	}, nil
+}
+
+func (mu *Mutex) RLock() (unlock func(), err error) {
+	if mu.Path == "" {
+		panic("lockedfile.Mutex: missing Path during Lock")
+	}
+	mu.mu.RLock()
+
+	f, err := OpenFile(mu.Path, os.O_RDONLY, 0666)
+	if err != nil {
+		return nil, err
+	}
+
+	return func() {
+		mu.mu.RUnlock()
+		f.Close()
+	}, nil
+}
+
+func (mu *Mutex) TryRLock() (unlock func(), err error) {
+	if mu.Path == "" {
+		panic("lockedfile.Mutex: missing Path during Lock")
+	}
+
+	if !mu.mu.TryRLock() {
+		return nil, errors.New("can not trylock")
+	}
+
+	f, err := OpenFile(mu.Path, os.O_RDONLY, 0666)
+	if err != nil {
+		return nil, err
+	}
+
+	return func() {
+		mu.mu.RUnlock()
+		f.Close()
+	}, nil
+}
+
+func (mu *Mutex) RLockTimeout(timeout time.Duration, intervalCheck ...time.Duration) (unlock func(), err error) {
+	if timeout == 0 {
+		return mu.RLock()
+	}
+	timeoutAt := time.Now().Add(timeout)
+	timeoutns := timeout.Nanoseconds()
+	stepSleep := time.Duration(endec.RandRangeInt64(timeoutns/50, timeoutns/10))
+	if len(intervalCheck) != 0 {
+		stepSleep = intervalCheck[0]
+	}
+	for {
+		unlock, err = mu.TryRLock()
+		if err != nil {
+			if time.Now().After(timeoutAt) {
+				err = fmt.Errorf("Timeout")
+				return
+			} else {
+				runtime.Gosched()
+				time.Sleep(stepSleep)
+			}
+		} else {
+			return
+		}
+	}
+}
+
+func (mu *Mutex) LockTimeout(timeout time.Duration, intervalCheck ...time.Duration) (unlock func(), err error) {
+	if timeout == 0 {
+		return mu.Lock()
+	}
+	timeoutAt := time.Now().Add(timeout)
+	timeoutns := timeout.Nanoseconds()
+	stepSleep := time.Duration(endec.RandRangeInt64(timeoutns/50, timeoutns/10))
+	//stepSleep := timeout / time.Nanosecond / 10
+	if len(intervalCheck) != 0 {
+		stepSleep = intervalCheck[0]
+	}
+	for {
+		unlock, err = mu.TryLock()
+		if err != nil {
+			if time.Now().After(timeoutAt) {
+				err = fmt.Errorf("Timeout")
+				return
+			} else {
+				runtime.Gosched()
+				time.Sleep(stepSleep)
+			}
+		} else {
+			return
+		}
+	}
+}
+
+func Lock(path string) (unlock func(), err error) {
+	mu := MutexAt(path)
+	return mu.Lock()
+}
+
+func LockTimeout(path string, timeout time.Duration, intervalCheck ...time.Duration) (unlock func(), err error) {
+	mu := MutexAt(path)
+	return mu.LockTimeout(timeout, intervalCheck...)
+}
+
+func RLockTimeout(path string, timeout time.Duration, intervalCheck ...time.Duration) (unlock func(), err error) {
+	mu := MutexAt(path)
+	return mu.RLockTimeout(timeout, intervalCheck...)
 }
