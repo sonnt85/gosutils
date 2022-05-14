@@ -76,6 +76,11 @@ func (slog *Slog) GetOldLogFiles() (retpaths []string) {
 	return
 }
 
+func ColorStd() {
+	// colorable.NewColorableStderr().Write(p []byte)
+	colorable.EnableColorsStdout(nil)()
+}
+
 //logPath string, log_level logrus.Level, pretty bool)
 func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool, logpaths ...interface{}) {
 	logpath := ""
@@ -118,6 +123,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 		File:           true,
 		Line:           true,
 		Package:        false,
+		// BaseNameOnly:   true,
 		// TextToSearchFun: "gosutils.slogrus.",
 	}
 	slog.SetLevel(log_level.Level)
@@ -191,6 +197,11 @@ func InitStandardLogger(log_level Level, pretty bool, diableStdout bool, logpath
 	// }
 	initDefaultLog(stdSlog, log_level, pretty, diableStdout, logpaths...)
 	return stdSlog
+}
+
+//log for stdout without logfile, prety json
+func InitStandardLoggerWithDefault(log_level Level) *Slog {
+	return InitStandardLogger(log_level, true, false)
 }
 
 //log for stdout and logfile,

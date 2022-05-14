@@ -14,6 +14,8 @@
 
 package slogrus
 
+import "io"
+
 var (
 	_ Logger = (*Slog)(nil)
 )
@@ -27,6 +29,10 @@ func SetDefaultLogger(l Logger) {
 		panic("logger must not be nil")
 	}
 	_defaultLogger = l
+}
+
+func SetDefaultLoggerIsDiscard() {
+	SetDefaultLogger(New(io.Discard))
 }
 
 func GetDefaultLogger() Logger {
