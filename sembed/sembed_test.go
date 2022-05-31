@@ -21,12 +21,17 @@ func printFsInfo(finfo []fs.FileInfo) {
 func TestHttpSystemFS(t *testing.T) {
 	var retbyte = make([]byte, 100)
 	var err error
-	fs := NewHttpSystemFS(&efs, "statictest")
+	fs, err := NewHttpSystemFS(&efs, "statictest")
+
+	// fs, err := NewHttpSystemFS(&efs)
+	require.Nil(t, err)
+
 	// fmt.Println(fs.FindFilesMatchRegexpPathFromRoot("/dir1", "hello*", -1, true, true))
-	err = fs.Copy(`./`, "/dir1")
+	err = fs.Copy(`./statictestcopy/`, "dir1")
 	require.Nil(t, err)
 	// return
 	f, err := fs.Open(`dir1`)
+	// f.Read(p []byte)
 	require.Nil(t, err)
 	finfos, err := f.Readdir(0)
 	require.Nil(t, err)
@@ -34,10 +39,10 @@ func TestHttpSystemFS(t *testing.T) {
 	// fmt.Printf("%#v", finfos)
 	// return
 	// fs.Setsub("statictest")
-	retbyte, err = fs.ReadFile("/dir1/hello1.txt")
+	retbyte, err = fs.ReadFile("dir1/hello1.txt")
 	require.Nil(t, err)
 	fmt.Println(string(retbyte))
-	return
+	// return
 	f, err = fs.Open("hello.txt")
 	f.Read(retbyte)
 	require.Nil(t, err)
@@ -46,5 +51,19 @@ func TestHttpSystemFS(t *testing.T) {
 	require.Nil(t, err)
 	finfos, err = hsy.Readdir(0)
 	require.Nil(t, err)
-	fmt.Println(finfos)
+	printFsInfo(finfos)
+}
+
+func TestCopy(t *testing.T) {
+	Copy("/tmp/", "statictest")
+}
+
+func TestFind(t *testing.T) {
+	// fs, err := NewHttpSystemFS(&efs, "statictest")
+
+	fs, err := NewHttpSystemFS(&efs)
+	require.Nil(t, err)
+
+	// fs, err := NewHttpSystemFS(&efs)
+	fmt.Println(fs.FindFilesMatchRegexpPathFromRoot("statictest/dir1", "hello1.*", -1, true, true))
 }

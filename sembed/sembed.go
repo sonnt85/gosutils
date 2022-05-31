@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/sonnt85/gofilepath"
 	"github.com/sonnt85/gosutils/sregexp"
@@ -16,39 +17,131 @@ import (
 )
 
 // http.File
+// type File interface {
+// 	io.Closer x
+// 	io.Reader x
+// 	io.Seeker x
+// 	Readdir(count int) ([]fs.FileInfo, error) x
+// 	Stat() (fs.FileInfo, error)
+// }
 type File struct {
 	reader *bytes.Reader
 	FileReadDir
 }
 
-type HttpSystemFS struct {
-	fs.SubFS
+func NewFile() (f *File) {
+	f = new(File)
+	return
+}
+
+type HttpSystem interface {
+	SubFS
 	fs.StatFS
-	subPath string
-	*embed.FS
+	fs.ReadDirFS
+	fs.ReadFileFS
 }
 
-func NewHttpSystemFS(efs *embed.FS, sub ...string) *HttpSystemFS {
-	subPath := ""
+type embedWrap struct {
+	efs *embed.FS
+}
+
+func (ewrap *embedWrap) Open(name string) (fs.File, error) {
+	return ewrap.efs.Open(name)
+}
+
+type embedSub struct {
+	*embedWrap
+	dir string
+}
+
+func NewEmbedSub() *embedSub {
+	return &embedSub{embedWrap: new(embedWrap), dir: ""}
+}
+
+// fullName maps name to the fully-qualified name dir/name.
+func (f *embedSub) fullName(op string, name string) (string, error) {
+	name = strings.TrimPrefix(name, ".")
+	name = strings.TrimPrefix(name, "/")
+	if !fs.ValidPath(name) {
+		return "", &fs.PathError{Op: op, Path: name, Err: errors.New("invalid name")}
+	}
+	return path.Join(f.dir, name), nil
+}
+
+// shorten maps name, which should start with f.dir, back to the suffix after f.dir.
+// func (f *embedSub) shorten(name string) (rel string, ok bool) {
+// 	if name == f.dir {
+// 		return ".", true
+// 	}
+// 	if len(name) >= len(f.dir)+2 && name[len(f.dir)] == '/' && name[:len(f.dir)] == f.dir {
+// 		return name[len(f.dir)+1:], true
+// 	}
+// 	return "", false
+// }
+
+func (esub *embedSub) ReadDir(name string) ([]fs.DirEntry, error) {
+	fullname, err := esub.fullName("readdir", name)
+	if err != nil {
+		return nil, err
+	}
+	return esub.efs.ReadDir(fullname)
+}
+func (esub *embedSub) ReadFile(name string) ([]byte, error) {
+	fullname, err := esub.fullName("readfile", name)
+	if err != nil {
+		return nil, err
+	}
+	return esub.efs.ReadFile(fullname)
+}
+
+// func (esub *embedSub) Sub(dir string) (subem fs.FS, err error) {
+func (esub *embedSub) Sub(dir string) (subem *embedSub, err error) {
+	if !fs.ValidPath(dir) {
+		return nil, &fs.PathError{Op: "sub", Path: dir, Err: errors.New("invalid name")}
+	}
+	if dir == "." {
+		return esub, nil
+	}
+	if _, err := esub.Open(dir); err != nil {
+		return nil, err
+	}
+	newEsub := *esub
+	newEsub.dir = path.Join(esub.dir, dir)
+	return &newEsub, nil
+}
+
+func (esub *embedSub) SubSet(dir string) (err error) {
+	if !fs.ValidPath(dir) {
+		return &fs.PathError{Op: "sub", Path: dir, Err: errors.New("invalid name")}
+	}
+	if dir == "." {
+		return nil
+	}
+	esub.dir = dir
+	return nil
+}
+
+func (esub *embedSub) Open(name string) (fs.File, error) { //implement FS
+	fullname, err := esub.fullName("open", name)
+	if err != nil {
+		return nil, err
+	}
+	return esub.efs.Open(fullname)
+}
+
+type HttpSystemFS struct {
+	// fs.SubFS
+	// fs.StatFS
+	*embedSub
+}
+
+func NewHttpSystemFS(efs *embed.FS, sub ...string) (*HttpSystemFS, error) {
+	hfs := HttpSystemFS{NewEmbedSub()}
+	hfs.embedWrap.efs = efs
 	if len(sub) != 0 {
-		subPath = sub[0]
+		return hfs.Sub(sub[0])
 	}
-	return &HttpSystemFS{
-		FS:      efs,
-		subPath: subPath,
-	}
-}
-
-func (fsh *HttpSystemFS) ReadFile(name string) ([]byte, error) {
-	return fsh.FS.ReadFile(fsh.fullName(name))
-}
-
-func (fsh *HttpSystemFS) fullName(name string) string {
-	if len(fsh.subPath) != 0 {
-		name = path.Join(fsh.subPath, name)
-		// name = fsh.subPath + "/" + name
-	}
-	return name
+	return &hfs, nil
 }
 
 func (fsh *HttpSystemFS) Open(name string) (hf http.File, err error) {
@@ -56,28 +149,44 @@ func (fsh *HttpSystemFS) Open(name string) (hf http.File, err error) {
 	var fileConten []byte
 
 	var fstat fs.FileInfo
-	file.fullpath = fsh.fullName(name)
-	// name = fsh.fullName(name)
+	fstat, err = fsh.Stat(name)
+	if err != nil {
+		return
+	}
+	file.FileInfo = fstat
+	file.shortName = name
+	file.ReadDirFS = fsh.embedSub
+
+	if !fstat.IsDir() {
+		if fileConten, err = fsh.ReadFile(name); err != nil {
+			return
+		}
+		file.reader = bytes.NewReader(fileConten)
+	}
+	return &file, nil
+}
+
+func (fsh *HttpSystemFS) OpenFile(name string) (hf *File, err error) {
+	var file = File{}
+	var fileConten []byte
+
+	var fstat fs.FileInfo
 	fstat, err = fsh.Stat(name)
 	if err != nil {
 		return
 	}
 
 	if !fstat.IsDir() {
-		if fileConten, err = fsh.FS.ReadFile(file.fullpath); err != nil {
+		if fileConten, err = fsh.ReadFile(file.Name()); err != nil {
 			return
 		}
 		file.reader = bytes.NewReader(fileConten)
 	}
-	file.ReadDirFS = fsh.FS
+	file.ReadDirFS = fsh.embedSub
 	file.FileInfo = fstat
+	file.shortName = name
 	return &file, nil
 }
-
-func (fsh *HttpSystemFS) Setsub(name string) {
-	fsh.subPath = name
-}
-
 func (fsh *HttpSystemFS) FindFilesMatchPathFromRoot(rootSearch, pattern string, maxdeep int, matchfile, matchdir bool, matchFunc func(pattern, relpath string) bool) (matches []string) {
 	matches = make([]string, 0)
 	if matchFunc == nil {
@@ -140,14 +249,14 @@ func (fsh *HttpSystemFS) FindFilesMatchRegexpPathFromRoot(root, pattern string, 
 
 func (fsh *HttpSystemFS) FindFilesMatchRegexpName(root, pattern string, maxdeep int, matchfile, matchdir bool) (matches []string) {
 	matchFunc := func(pattern, relpath string) bool {
-		return sregexp.New(pattern).MatchString(filepath.Base(relpath))
+		return sregexp.New(pattern).MatchString(gofilepath.Base(relpath))
 	}
 	return fsh.FindFilesMatchPathFromRoot(root, pattern, maxdeep, matchfile, matchdir, matchFunc)
 }
 
 func (fsh *HttpSystemFS) FindFilesMatchName(root, pattern string, maxdeep int, matchfile, matchdir bool) (matches []string) {
 	matchFunc := func(pattern, relpath string) bool {
-		if match, err := filepath.Match(pattern, filepath.Base(relpath)); err == nil && match {
+		if match, err := filepath.Match(pattern, gofilepath.Base(relpath)); err == nil && match {
 			return true
 		}
 		return false
@@ -226,8 +335,12 @@ func (d *statDirEntry) Type() fs.FileMode          { return d.info.Mode().Type()
 func (d *statDirEntry) Info() (fs.FileInfo, error) { return d.info, nil }
 
 func (fsh *HttpSystemFS) Stat(root string) (finfo fs.FileInfo, err error) {
-	root = fsh.fullName(root)
-	return fs.Stat(fsh.FS, root)
+	file, err := fsh.embedSub.Open(root)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return file.Stat()
 }
 
 func (fsh *HttpSystemFS) WalkDir(root string, fn WalkDirFunc) (err error) {
@@ -252,7 +365,7 @@ func (fsh *HttpSystemFS) walkDir(pathdir string, d fs.DirEntry, walkDirFn WalkDi
 		}
 		return err
 	}
-	dirs, err := fs.ReadDir(fsh.FS, pathdir)
+	dirs, err := fsh.ReadDir(pathdir)
 	if err != nil {
 		// Second call, to report ReadDir error.
 		err = walkDirFn(pathdir, d, err)
@@ -280,7 +393,7 @@ func (fsh *HttpSystemFS) Copy(toDirPath, fromFshPath string) (err error) {
 	// 		//cleanup function
 	// 	}
 	// }()
-	// fromFshPath = fsh.fullName(fromFshPath)
+	// fromFshPath = fsh.Getfullpath(fromFshPath)
 	cr := &CopyRecursive{IsVerbose: true,
 		IgnErr:   false,
 		ReadFile: fsh.ReadFile,
@@ -293,41 +406,34 @@ func (fsh *HttpSystemFS) Copy(toDirPath, fromFshPath string) (err error) {
 		},
 		Writer: os.WriteFile,
 		Stat:   fsh.Stat,
-		Open:   fsh.Open,
+		Open:   fsh.OpenFile,
 	}
 	toDirPath = gofilepath.FromSlash(toDirPath)
-	if !gofilepath.IsAbs(toDirPath) {
-		toDirPath, err = gofilepath.Abs(toDirPath)
-		if err != nil {
-			return err
-		}
-	}
+	// if !gofilepath.IsAbs(toDirPath) {
+	// 	toDirPath, err = gofilepath.Abs(toDirPath)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// }
 	return cr.Copy(toDirPath, fromFshPath)
 }
 
 func (fsh *HttpSystemFS) Sub(dir string) (sub *HttpSystemFS, err error) {
+	// return fsh.embedSub.Sub(dir)
 	sub = new(HttpSystemFS)
 	*sub = *fsh
-	sub.subPath = path.Join(sub.subPath, dir)
-	var f fs.File
-	if f, err = sub.FS.Open(sub.subPath); err != nil {
+	var subem *embedSub
+	subem, err = fsh.embedSub.Sub(dir)
+	if err != nil {
 		return nil, err
-	} else {
-		var stat fs.FileInfo
-		if stat, err = f.Stat(); err == nil {
-			if !stat.IsDir() {
-				return nil, errors.New(sub.subPath + " is not dir")
-			}
-		}
 	}
+	sub.embedSub = subem
 	return
 }
 
-//clone new sub
-func (fsh *HttpSystemFS) NewSub(dir string) *HttpSystemFS {
-	sub := *fsh
-	sub.subPath = path.Join(sub.subPath, dir)
-	return &sub
+func (fsh *HttpSystemFS) SubSet(dir string) (err error) {
+	fsh.embedSub.SubSet(dir)
+	return
 }
 
 func (f *File) Close() error {

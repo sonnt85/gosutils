@@ -14,6 +14,12 @@ import (
 	"github.com/sonnt85/gosystem"
 )
 
+type FileInfo interface {
+	fs.FileInfo
+	// getshortname() string
+	// setshrotname(name string)
+}
+
 // File implement
 type FileReadDir struct {
 	// fs ReadFS
@@ -21,7 +27,7 @@ type FileReadDir struct {
 	// fs.ReadFileFS
 	// fs.StatFS
 
-	fullpath string
+	shortName string
 	fs.FileInfo
 	dirIdx int
 }
@@ -37,7 +43,9 @@ type CopyRecursive struct {
 
 	// fs.ReadFileFS
 	// fs.StatFS
-	Open     func(name string) (http.File, error)
+	Open func(name string) (*File, error)
+
+	// Open     func(name string) (http.File, error)
 	Stat     func(root string) (finfo fs.FileInfo, err error)
 	ReadFile func(name string) ([]byte, error)
 	Writer   WriteFun
@@ -64,7 +72,7 @@ func (f *FileReadDir) Readdir(count int) ([]os.FileInfo, error) {
 	var entryDirs []fs.DirEntry
 	var err error
 
-	entryDirs, err = f.ReadDir(f.fullpath)
+	entryDirs, err = f.ReadDir(f.shortName)
 	if err != nil {
 		return nil, err
 	}
@@ -95,18 +103,6 @@ func (f *FileReadDir) Readdir(count int) ([]os.FileInfo, error) {
 	}
 	f.dirIdx += len(fis)
 	return fis, nil
-}
-
-func (cr *CopyRecursive) _Open(name string) (hf *FileReadDir, err error) {
-	var httpf FileReadDir
-	var fstat fs.FileInfo
-	if fstat, err = cr.Stat(name); err != nil {
-		return
-	}
-	// httpf.ReadDirFS
-	httpf.fullpath = name
-	httpf.FileInfo = fstat
-	return &httpf, nil
 }
 
 func (cr *CopyRecursive) processDir(srcFilePath string, srcFileInfo os.FileInfo) (err error) {
@@ -242,6 +238,28 @@ func (cr *CopyRecursive) Copy(dstName, srcName string) (err error) {
 	return
 }
 
+type ReadirOS struct {
+	*os.File
+}
+
+func (rdos *ReadirOS) Open(name string) (f fs.File, err error) {
+	// return os.Open(filepath.Join(rdos.Name(), name))
+	return os.Open(name)
+}
+
+func (rdos *ReadirOS) ReadDir(name string) ([]fs.DirEntry, error) {
+	return os.ReadDir(name)
+	// return os.ReadDir(filepath.Join(rdos.Name(), name))
+}
+
+func (rdos *ReadirOS) Close() (err error) {
+	return rdos.File.Close()
+}
+
+type FileOS struct {
+	*File
+}
+
 //copy file or directory from fsh  to fs dirName
 func Copy(toDirPath, fromFshPath string) (err error) {
 	cr := &CopyRecursive{IsVerbose: true,
@@ -256,7 +274,34 @@ func Copy(toDirPath, fromFshPath string) (err error) {
 		},
 		Writer: os.WriteFile,
 		Stat:   os.Stat,
-		Open:   os.Open,
+		Open: func(name string) (fF *File, err error) {
+
+			var file = File{}
+			var fileConten []byte
+
+			var fstat fs.FileInfo
+			fstat, err = os.Stat(name)
+			if err != nil {
+				return
+			}
+			file.FileInfo = fstat
+			file.shortName = name
+
+			f, err := os.Open(name)
+			if err != nil {
+				return nil, err
+			}
+			file.ReadDirFS = &ReadirOS{File: f}
+			if !fstat.IsDir() {
+				// file.reader, err = os.Open(file.Name())
+				if fileConten, err = os.ReadFile(name); err != nil {
+					return
+				}
+				file.reader = bytes.NewReader(fileConten)
+			}
+
+			return &file, nil
+		},
 	}
 	toDirPath = gofilepath.FromSlash(toDirPath)
 	if !gofilepath.IsAbs(toDirPath) {
@@ -268,76 +313,26 @@ func Copy(toDirPath, fromFshPath string) (err error) {
 	return cr.Copy(toDirPath, fromFshPath)
 }
 
-type ReadDirFile interface {
-	getpath() string
-	setpath(newpath string)
-	setindex(int) int
-	getindex() int
-	fs.StatFS
-	fs.FileInfo
-	fs.ReadDirFS
-}
-
-func Readdir(f ReadDirFile, count int) ([]os.FileInfo, error) {
-	var fis []os.FileInfo
-	if !f.IsDir() {
-		return fis, nil
-	}
-	var entryDirs []fs.DirEntry
-	var err error
-
-	entryDirs, err = f.ReadDir(f.getpath())
-	if err != nil {
-		return nil, err
-	}
-	flen := len(entryDirs)
-
-	// If dirIdx reaches the end and the count is a positive value,
-	// an io.EOF error is returned.
-	// In other cases, no error will be returned even if, for example,
-	// you specified more counts than the number of remaining files.
-	start := f.getindex()
-	if start >= flen && count > 0 {
-		return fis, io.EOF
-	}
-	var end int
-	if count <= 0 {
-		end = flen
-	} else {
-		end = start + count
-	}
-	if end > flen {
-		end = flen
-	}
-	var finfo fs.FileInfo
-	for i := start; i < end; i++ {
-		if finfo, err = entryDirs[i].Info(); err == nil {
-			fis = append(fis, finfo)
-		}
-	}
-	f.setindex(f.getindex() + len(fis))
-	return fis, nil
-}
-
-func Open(name string) (hf http.File, err error) {
+func Open(fsh HttpSystem, name string) (hf *File, err error) {
 	var file = File{}
 	var fileConten []byte
 
 	var fstat fs.FileInfo
-	file.fullpath = fsh.fullName(name)
+	// file.fullpath = fsh.Getfullpath(name)
 	// name = fsh.fullName(name)
 	fstat, err = fsh.Stat(name)
 	if err != nil {
 		return
 	}
-
+	file.ReadDirFS = fsh
+	file.shortName = name
+	file.FileInfo = fstat
 	if !fstat.IsDir() {
-		if fileConten, err = fsh.FS.ReadFile(file.fullpath); err != nil {
+		if fileConten, err = fsh.ReadFile(name); err != nil {
 			return
 		}
 		file.reader = bytes.NewReader(fileConten)
 	}
-	file.ReadDirFS = fsh.FS
-	file.FileInfo = fstat
+
 	return &file, nil
 }
