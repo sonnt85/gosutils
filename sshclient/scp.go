@@ -1,27 +1,21 @@
-// Package scp provides a simple interface to copying files over a
-// go.crypto/ssh session.
+// Full implement scp client mode for ssh
 package sshclient
 
 import (
+	"bufio"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
-
-	"bufio"
-	"errors"
-
-	//	"time"
-	//	"github.com/laher/sshutils-go/sshconn"
-	//	"github.com/sonnt85/gosutils/regexp"
-
-	//	shellquote "github.com/sonnt85/gosutils/shellwords"
-	"encoding/hex"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/sonnt85/gosutils/sutils"
+	"github.com/sonnt85/gosystem"
 	"golang.org/x/crypto/ssh"
 	//	"strings"
 )
@@ -88,7 +82,7 @@ func (scp *SecureCopier) processDir(procWriter io.Writer, srcFilePath string, sr
 }
 
 func (scp *SecureCopier) sendEndDir(procWriter io.Writer) error {
-	header := fmt.Sprintf("E\n")
+	header := "E\n"
 	if scp.IsVerbose {
 		log.Printf("Sending end dir: %s", header)
 	}
@@ -543,6 +537,8 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 						}
 
 						err = os.Rename(tmpDstFile, thisDstFile)
+						gosystem.Chmod(thisDstFile, fs.FileMode(mode)) //Need test
+
 						if err != nil {
 							log.Errorln(err.Error())
 							ce <- err

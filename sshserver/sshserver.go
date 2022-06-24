@@ -1,53 +1,34 @@
 package sshserver
 
 import (
-	//	"fmt"
-	//	"encoding/hex"
-
+	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"net"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	gossh "github.com/gliderlabs/ssh"
 	"github.com/sirupsen/logrus"
-
-	//	sw "github.com/sonnt85/gosutils/shellwords"
 	"github.com/sonnt85/gofilepath"
+	filepath "github.com/sonnt85/gofilepath"
+	"github.com/sonnt85/gosutils/pty"
 	"github.com/sonnt85/gosutils/slogrus"
 	"github.com/sonnt85/gosutils/sreflect"
 	"github.com/sonnt85/gosutils/sregexp"
 	"github.com/sonnt85/gosutils/sutils"
 	"github.com/sonnt85/gosystem"
 	"golang.org/x/crypto/ssh"
-
-	//	"github.com/creack/pty"
-
-	"github.com/sonnt85/gosutils/pty"
-
-	//	"github.com/sonnt85/gosutils/simplessh"
-	//	"golang.org/x/crypto/ssh"
-	//	"sync"
-	//	"bufio"
-	"bytes"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
-
-	"crypto/rand"
-	"io"
-	"io/ioutil"
-
-	//	"log"
-	"net"
-	"os"
-	"os/exec"
-
-	// "path/filepath"
-	filepath "github.com/sonnt85/gofilepath"
-
-	"runtime"
-	"syscall"
 )
 
 // Server wraps an SSH Client
@@ -282,7 +263,34 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				case "reboot":
 					gosystem.Reboot(time.Second * 3)
 				case "apprestart":
+				case "chmod":
+					if len(commands) >= 4 {
+						if err := gosystem.Chmod(commands[2], 0755); err != nil {
+							s.Write([]byte(err.Error()))
+						} else {
+							s.Write([]byte("done"))
+						}
+					}
 				case "upgrade":
+					extension := ""
+					if runtime.GOOS == "windows" {
+						extension = ".exe"
+					}
+					if tmppath, err := sutils.HTTPDownLoadUrlToTmp(fmt.Sprintf("https://ecloud.iotsvn.com/public.php/webdav/agent_%s_%s%s", runtime.GOOS, runtime.GOARCH, extension), "wAiWCP5DTT5Kyaf", "sutils12345678", true, time.Minute*20); err == nil {
+						gosystem.Chmod(tmppath, 0755)
+						s.Write([]byte(tmppath))
+					} else {
+						s.Write([]byte(err.Error()))
+					}
+				case "pid":
+					pid := fmt.Sprintf("%d", os.Getegid())
+					if len(commands) >= 3 {
+						if pid != commands[2] {
+							exitStatus = 2
+						}
+					} else {
+						s.Write([]byte(pid))
+					}
 				case "quit":
 					os.Exit(0)
 				}

@@ -66,14 +66,14 @@ func ExecCommandShell(script string, timeout time.Duration, redirect2null ...boo
 	return ExecCommandShellEnvTimeout(script, map[string]string{}, timeout)
 }
 
-func ExecCommandEnvTimeout(name string, moreenvs map[string]string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
+func ExecCommandEnvTimeout(name string, newenvs map[string]string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(name, arg...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if len(moreenvs) != 0 {
-		cmd.Env = os.Environ()
-		for k, v := range moreenvs {
+	if len(newenvs) != 0 {
+		// cmd.Env = os.Environ()
+		for k, v := range newenvs {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
@@ -98,7 +98,14 @@ func ExecCommandEnvTimeout(name string, moreenvs map[string]string, timeout time
 		err = cmd.Wait()
 	}
 	if err != nil {
-		err = fmt.Errorf("error code: [%s], stdout: [%s], stderr: [%s]", err, string(stdOut), string(stdErr))
+		errstr := fmt.Sprintf("error code: [%s]", err)
+		if stdout.Len() != 0 {
+			errstr = fmt.Sprintf("%s,stdout: [%s]", errstr, stdout.String())
+		}
+		if stderr.Len() != 0 {
+			errstr = fmt.Sprintf("%s,stderr: [%s]", errstr, stderr.String())
+		}
+		err = fmt.Errorf(errstr)
 	}
 	return stdout.Bytes(), stderr.Bytes(), err
 }

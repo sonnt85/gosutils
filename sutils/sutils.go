@@ -28,7 +28,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"net"
 	"net/http"
 	"net/smtp"
 
@@ -577,87 +576,6 @@ func IsContainer() bool {
 	return gogrep.FileIsMatchLiteralLine("/proc/self/cgroup", "docker") || gogrep.FileIsMatchLiteralLine("/proc/self/cgroup", "lxc")
 }
 
-func IsPortOpen(addr string, port int, proto string, timeouts ...time.Duration) bool {
-	timeout := time.Millisecond * 500
-	if len(timeouts) != 0 {
-		timeout = timeouts[0]
-	}
-	if len(proto) == 0 {
-		proto = "tcp"
-	}
-	conn, err := net.DialTimeout(proto, fmt.Sprintf("%s:%d", addr, port), timeout)
-	if err == nil {
-		conn.Close()
-		return true
-	}
-	return false
-}
-
-func IsPortAvailable(ip string, port int, timeout int) bool {
-	conn, err := net.Listen("tcp", fmt.Sprintf("%s:%d", ip, port))
-
-	if err == nil {
-		conn.Close()
-		return true
-	} else {
-		//		if timeout == 0 {
-		//			return false
-		//		}
-		//		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port), time.Duration(timeout)*time.Second)
-		//
-		//		if err, _ := err.(*net.OpError); err != nil {
-		//			//ok && err.TimeOut()
-		//			//			log.Printf("Timeout error: %s\n", err)
-		//			return true
-		//		}
-		//
-		//		if err != nil {
-		//			// Log or report the error here
-		//			//			log.Printf("Error: %s\n", err)
-		//			return true
-		//		} else {
-		//			defer conn.Close()
-		//		}
-		return false
-	}
-}
-
-func IsPortUsed(ip string, port int, timeout int) bool {
-	return !IsPortAvailable(ip, port, timeout)
-}
-
-func GetFreePort() (int, error) {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
-	if err != nil {
-		return 0, err
-	}
-
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
-}
-
-func GetFreePorts(count int) ([]int, error) {
-	var ports []int
-	for i := 0; i < count; i++ {
-		addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
-		if err != nil {
-			return nil, err
-		}
-
-		l, err := net.ListenTCP("tcp", addr)
-		if err != nil {
-			return nil, err
-		}
-		defer l.Close()
-		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
-	}
-	return ports, nil
-}
-
 func CreateSha1(data []byte) string {
 	h := sha1.New()
 	h.Write([]byte(data))
@@ -961,7 +879,7 @@ func HTTPDownLoadUrl(urlpath, httpmethod, username, password string, insecure_fl
 	return bodyBytes, nil
 }
 
-func HTTPDownLoadUrlToFile(urlpath, username, password string, insecure_flag bool, filePath string, timeouts ...time.Duration) (err error) {
+func HTTPDownLoadUrlToFile(urlpath, username, password string, insecure_flag bool, dstPath string, timeouts ...time.Duration) (err error) {
 	// Create the file
 	tmpFile := TempFileCreateInNewTemDir("httpd")
 	defer os.RemoveAll(filepath.Dir(tmpFile))
@@ -1007,8 +925,8 @@ func HTTPDownLoadUrlToFile(urlpath, username, password string, insecure_flag boo
 	if err != nil {
 		return err
 	}
-
-	return os.Rename(tmpFile, filePath)
+	out.Close()
+	return os.Rename(tmpFile, dstPath)
 }
 
 func HTTPDownLoadUrlToTmp(urlpath, username, password string, insecure_flag bool, timeouts ...time.Duration) (tmpfile string, err error) {
@@ -1042,8 +960,7 @@ func IsProcessAlive(pid int) bool {
 	return proc.Signal(syscall.Signal(0)) == nil
 }
 
-func JsonGetPathNode(node *jsonquery.Node) string {
-	retstr := node.Data
+func JsonGetPathNode(node *jsonquery.Node) (retstr string) {
 	if node.Type == jsonquery.TextNode {
 		retstr = "/@" + retstr
 	} else {
@@ -1066,7 +983,7 @@ func JsonSet(jsonstring string, elementPath string, val any) (string, error) {
 	return sjson.Set(jsonstring, elementPath, val)
 }
 
-func JsonStringFindElements(strjson *string, pathSearch string) (map[string]string, error) {
+func JsonStringFindElements(strjson *string, pathSearch string, valueflag ...bool) (map[string]string, error) {
 	var retmap = map[string]string{}
 	doc, err := jsonquery.Parse(strings.NewReader(*strjson))
 	if err != nil {
@@ -1081,14 +998,14 @@ func JsonStringFindElements(strjson *string, pathSearch string) (map[string]stri
 	if len(nodes) == 0 {
 		return retmap, errors.New("missing keypath")
 	}
-	//	found := false
-	//	fmt.Println("scan nodes", err)
+	//found := false
+	//fmt.Println("scan nodes", err)
 	id := 0
-	//	numnodes := len(nodes)
+	//numnodes := len(nodes)
 	for k := 0; k < len(nodes); k++ {
-		v := nodes[k]
-		key := JsonGetPathNode(v)
-		//		fmt.Println("key:", key, v)
+		node := nodes[k]
+		key := JsonGetPathNode(node)
+		//fmt.Println("key:", key, v)
 		exist := func() bool {
 			for i := 0; i < k; i++ {
 				if key == JsonGetPathNode(nodes[i]) {
@@ -1098,34 +1015,29 @@ func JsonStringFindElements(strjson *string, pathSearch string) (map[string]stri
 			return false
 		}()
 
-		//		found = true
-		//		fmt.Println("xmlStringFindElement:", v.NamespaceURI, v.InnerText())
+		//found = true
+		//fmt.Println("xmlStringFindElement:", v.NamespaceURI, v.InnerText())
 		if exist {
 			key = key + "[" + strconv.Itoa(id) + "]"
 			id = id + 1
 		}
 		//|| v.Type == xmlquery.AttributeNode
-		if v.FirstChild == nil || v.FirstChild.FirstChild == nil {
-			retmap[key] = v.InnerText()
+		if node.FirstChild == nil || node.FirstChild.FirstChild == nil {
+			retmap[key] = node.InnerText()
 		} else {
-			xml := strings.NewReader(v.OutputXML())
+			xml := strings.NewReader(node.OutputXML())
 			json, err := xj.Convert(xml)
 			if err != nil {
-				retmap[key] = v.OutputXML()
+				retmap[key] = node.OutputXML()
 			} else {
 				retmap[key] = json.String()
 			}
-			//			retmap[key] = v.OutputXML(true)
+			//retmap[key] = v.OutputXML(true)
 		}
-		//		retmap[strconv.Itoa(id)] = v.InnerText()
+		//retmap[strconv.Itoa(id)] = v.InnerText()
 	}
 
-	//	if found {
-	//		fmt.Println("retmap", retmap)
 	return retmap, nil
-	//	} else {
-	//		return retmap, errors.New("Can not found")
-	//	}
 }
 
 func JsonStringFindElementsSlide(strjson *string, pathSearch string) ([]string, error) {
@@ -1201,12 +1113,15 @@ func StringIsXml(input *string) bool {
 
 func XmlStringFindElements(strxml *string, pathSearch string) (map[string]string, error) {
 	var retmap = map[string]string{}
+	// log.Debug("nodes")
 	doc, err := xmlquery.Parse(strings.NewReader(*strxml))
 	if err != nil {
 		//		fmt.Println("xmlquery.Parse:", err)
 		return retmap, err
 	}
 	nodes, err := xmlquery.QueryAll(doc, pathSearch)
+	// log.Debug(nodes)
+
 	if err != nil {
 		return retmap, err
 	}
@@ -1768,4 +1683,36 @@ func CheckIsDone(ctx context.Context) bool {
 	default:
 		return false
 	}
+}
+
+func JoinMap[K comparable, T any](m1, m2 map[K]T) map[K]T {
+	if m1 == nil {
+		m1 = make(map[K]T)
+	}
+	for k, v := range m2 {
+		m1[k] = v
+	}
+	return m1
+}
+
+func FormatNginxConf(data string) (retstr string) {
+	var line string
+	var cntIndent int = 0
+	scanner := bufio.NewScanner(strings.NewReader(data))
+	for scanner.Scan() {
+		line = scanner.Text()
+		line = strings.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		if !strings.HasPrefix(line, "#") && strings.HasPrefix(line, "}") {
+			cntIndent--
+		}
+		retstr = fmt.Sprintf("%s%s%s\n", retstr, strings.Repeat("\t", cntIndent), line)
+
+		if !strings.HasPrefix(line, "#") && strings.HasSuffix(line, "{") {
+			cntIndent++
+		}
+	}
+	return
 }

@@ -81,22 +81,22 @@ func UniqueSlide[T constraints.Ordered](a *[]T) { SortThenUnique(SlideSortable[T
 func SlideAreUnique[T constraints.Ordered](a *[]T) bool { return IsUniqued(SlideSortable[T]{a}) }
 func SlideSort[T constraints.Ordered](a *[]T)           { Sort(SlideSortable[T]{a}) }
 
-func UniqueFloat64s(a *[]float64)         { UniqueSlide[float64](a) }
-func Float64sAreUnique(a *[]float64) bool { return SlideAreUnique[float64](a) }
-func Float64sSort(a *[]float64)           { SlideSort[float64](a) }
+func UniqueFloat64s(a *[]float64)         { UniqueSlide(a) }
+func Float64sAreUnique(a *[]float64) bool { return SlideAreUnique(a) }
+func Float64sSort(a *[]float64)           { SlideSort(a) }
 
-func UniqueInts(a *[]int)         { UniqueSlide[int](a) }
-func IntsAreUnique(a *[]int) bool { return SlideAreUnique[int](a) }
-func IntsSort(a *[]int)           { SlideSort[int](a) }
+func UniqueInts(a *[]int)         { UniqueSlide(a) }
+func IntsAreUnique(a *[]int) bool { return SlideAreUnique(a) }
+func IntsSort(a *[]int)           { SlideSort(a) }
 
-func UniqueUint64s(a *[]uint64)         { UniqueSlide[uint64](a) }
-func Uint64sAreUnique(a *[]uint64) bool { return SlideAreUnique[uint64](a) }
-func Uint64sSort(a *[]uint64)           { SlideSort[uint64](a) }
+func UniqueUint64s(a *[]uint64)         { UniqueSlide(a) }
+func Uint64sAreUnique(a *[]uint64) bool { return SlideAreUnique(a) }
+func Uint64sSort(a *[]uint64)           { SlideSort(a) }
 
-func UniqueInt64s(a *[]int64)         { UniqueSlide[int64](a) }
-func Int64sAreUnique(a *[]int64) bool { return SlideAreUnique[int64](a) }
-func Int64sSort(a *[]int64)           { SlideSort[int64](a) }
+func UniqueInt64s(a *[]int64)         { UniqueSlide(a) }
+func Int64sAreUnique(a *[]int64) bool { return SlideAreUnique(a) }
+func Int64sSort(a *[]int64)           { SlideSort(a) }
 
-func UniqueStrings(a *[]string)         { UniqueSlide[string](a) }
-func StringsAreUnique(a *[]string) bool { return SlideAreUnique[string](a) }
-func StringsSort(a *[]string)           { SlideSort[string](a) }
+func UniqueStrings(a *[]string)         { UniqueSlide(a) }
+func StringsAreUnique(a *[]string) bool { return SlideAreUnique(a) }
+func StringsSort(a *[]string)           { SlideSort(a) }

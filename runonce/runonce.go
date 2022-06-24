@@ -11,7 +11,9 @@ import (
 	//	"github.com/getlantern/byteexec"
 	//	"github.com/getlantern/daemon"
 
+	"github.com/sonnt85/gosutils/cmdshellwords"
 	"github.com/sonnt85/gosutils/sutils"
+	"github.com/sonnt85/gosystem/pid"
 	"github.com/sonnt85/snetutils"
 
 	"context"
@@ -21,7 +23,7 @@ import (
 	"os"
 	"os/exec"
 
-	log "github.com/sirupsen/logrus"
+	log "github.com/sonnt85/gosutils/slogrus"
 
 	//	"path/filepath"
 
@@ -43,13 +45,13 @@ func (rt Runtype) String() string {
 	return [...]string{"RUNFUNC", "RUNBYTES", "RUNFILE"}[rt]
 }
 
-type RunOnceConf struct {
+type RunOnce struct {
 	IpAddress                                       string
 	WorkDir                                         string
 	runtype                                         Runtype
 	Port                                            int
 	PortRuntime                                     int
-	timeout                                         int
+	timeout                                         time.Duration
 	noBind                                          bool
 	LoopCall                                        bool
 	cmd                                             *exec.Cmd
@@ -63,7 +65,7 @@ type RunOnceConf struct {
 	cancel   context.CancelFunc
 }
 
-func (gVar *RunOnceConf) Reset() {
+func (gVar *RunOnce) ResetDefault() {
 	gVar.IpAddress = ""
 	gVar.WorkDir = ""
 	gVar.runtype = RUNFUNC
@@ -82,21 +84,32 @@ func (gVar *RunOnceConf) Reset() {
 	//	gVar.ctx      context.Context
 }
 
-func (gVar *RunOnceConf) cmdtable(buf []byte, conn net.Conn) {
+func (gVar *RunOnce) cmdtable(buf []byte, conn net.Conn) {
 	//	var dat map[string]interface{}
 	var dat map[string]string
 
-	//	log.Println(len(buf))
+	//	log.Print(len(buf))
 	if err := json.Unmarshal(buf[:len(buf)], &dat); err != nil {
 		cmd := strings.TrimRight(string(buf), "\r\n")
+		cmds, err := cmdshellwords.SplitPosix(cmd)
+		if err != nil {
+			return
+		}
 		log.Printf("cmd: '%s'", cmd)
 
-		switch cmd {
+		switch cmds[0] {
 		case "getpid":
 			conn.Write([]byte(strconv.Itoa(syscall.Getpid())))
 		case "ping":
 			conn.Write([]byte("pong"))
-
+		case "ispid":
+			if len(cmds) >= 2 {
+				if cmds[1] != strconv.Itoa(syscall.Getpid()) {
+					conn.Write([]byte("true"))
+				} else {
+					conn.Write([]byte("false"))
+				}
+			}
 		default:
 		}
 		return
@@ -105,7 +118,7 @@ func (gVar *RunOnceConf) cmdtable(buf []byte, conn net.Conn) {
 	var cmd = dat["cmd"]
 	var token = dat["token"]
 	if token != strconv.Itoa(syscall.Getpid()) {
-		log.Errorln("Missing token!")
+		log.Error("Missing token!")
 		return
 	}
 
@@ -141,7 +154,7 @@ func (gVar *RunOnceConf) cmdtable(buf []byte, conn net.Conn) {
 	//	conn.Write([]byte(data))
 }
 
-func (gVar *RunOnceConf) handleRequest(conn net.Conn) {
+func (gVar *RunOnce) handleRequest(conn net.Conn) {
 	// Make a buffer to hold incoming data.
 	defer conn.Close()
 	var isClosed = false
@@ -164,8 +177,8 @@ func (gVar *RunOnceConf) handleRequest(conn net.Conn) {
 	}
 }
 
-func NewRunOnce(IpAddress, WorkDir string, port, timeout int, noBind, LoopCall bool, runtype Runtype, args []string, exebytes []byte) *RunOnceConf {
-	return &RunOnceConf{
+func NewRunOnce(IpAddress, WorkDir string, port int, timeout time.Duration, noBind, LoopCall bool, runtype Runtype, args []string, exebytes []byte) *RunOnce {
+	return &RunOnce{
 		cmd:       nil,
 		IpAddress: IpAddress,
 		WorkDir:   WorkDir,
@@ -181,13 +194,13 @@ func NewRunOnce(IpAddress, WorkDir string, port, timeout int, noBind, LoopCall b
 	}
 }
 
-func NewRunOnceFuncPort(port int) *RunOnceConf {
-	return &RunOnceConf{
+func NewRunOnceFuncPort(port int) *RunOnce {
+	return &RunOnce{
 		cmd:       nil,
 		IpAddress: "localhost",
 		WorkDir:   "",
 		Port:      port,
-		timeout:   1,
+		timeout:   time.Second,
 		noBind:    false,
 		LoopCall:  false,
 		runtype:   RUNFUNC,
@@ -197,13 +210,13 @@ func NewRunOnceFuncPort(port int) *RunOnceConf {
 	}
 }
 
-func NewRunOnceExecPort(port int, LoopCall bool, args []string) *RunOnceConf {
-	return &RunOnceConf{
+func NewRunOnceExecPort(port int, LoopCall bool, args []string) *RunOnce {
+	return &RunOnce{
 		cmd:       nil,
 		IpAddress: "localhost",
 		WorkDir:   "",
 		Port:      port,
-		timeout:   1,
+		timeout:   time.Second,
 		noBind:    false,
 		runtype:   RUNFILE,
 		LoopCall:  LoopCall,
@@ -213,13 +226,13 @@ func NewRunOnceExecPort(port int, LoopCall bool, args []string) *RunOnceConf {
 	}
 }
 
-func NewRunOnceBytesPort(port int, LoopCall bool, exebytes []byte) *RunOnceConf {
-	return &RunOnceConf{
+func NewRunOnceBytesPort(port int, LoopCall bool, exebytes []byte) *RunOnce {
+	return &RunOnce{
 		cmd:       nil,
 		IpAddress: "localhost",
 		WorkDir:   "",
 		Port:      port,
-		timeout:   1,
+		timeout:   time.Second,
 		noBind:    false,
 		runtype:   RUNBYTES,
 		LoopCall:  LoopCall,
@@ -229,7 +242,7 @@ func NewRunOnceBytesPort(port int, LoopCall bool, exebytes []byte) *RunOnceConf 
 	}
 }
 
-func (gVar *RunOnceConf) GenerateCmd() (err error) {
+func (gVar *RunOnce) GenerateCmd() (err error) {
 	if gVar.runtype == RUNBYTES {
 
 		rootdir, err := ioutil.TempDir("", "system")
@@ -255,7 +268,7 @@ func (gVar *RunOnceConf) GenerateCmd() (err error) {
 
 	} else {
 		if len(gVar.Args) < 1 {
-			log.Println("You must specify a command\n")
+			log.Print("You must specify a command\n")
 			return errors.New("Need has command arguments")
 		}
 
@@ -274,7 +287,7 @@ func (gVar *RunOnceConf) GenerateCmd() (err error) {
 			tmppath := sutils.TempFileCreateInNewTemDir(gVar.Exename)
 			if len(tmppath) != 0 {
 				if os.Symlink(gVar.ExeFullPathRuntime, tmppath) == nil {
-					//					log.Println("Use fake name")
+					//					log.Print("Use fake name")
 					os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(gVar.PATH, filepath.Dir(tmppath)))
 					//					os.Setenv("PATH", gVar.PATH+":"+filepath.Dir(tmppath))
 					gVar.ExeFullPathRuntime = tmppath
@@ -289,22 +302,22 @@ func (gVar *RunOnceConf) GenerateCmd() (err error) {
 	return nil
 }
 
-func (gVar *RunOnceConf) Poll() bool {
+func (gVar *RunOnce) Poll() bool {
 
 	if retbytes, err := snetutils.NetTCPClientSend(fmt.Sprintf("localhost:%d", gVar.Port), []byte("ping")); err == nil {
 		//		log.Printf("retbytes: %s", retbytes)
 		if string(retbytes) == "pong" {
-			log.Warningln("App is running....")
+			log.Info("App is running....")
 			return true
 		} else {
-			log.Warningln("Port is using but not for this app")
+			log.Info("Port is using but not for this app")
 		}
 	}
 
 	return false
 }
 
-func (gVar *RunOnceConf) Run() (err error) {
+func (gVar *RunOnce) Run() (err error) {
 	//
 	//	flag.StringVar(&gVar.IpAddress, "address", "127.0.0.1", "Address to listen on or to check")
 	//	flag.StringVar(&gVar.WorkDir, "dir", "", "Working diretory")
@@ -339,11 +352,11 @@ func (gVar *RunOnceConf) Run() (err error) {
 	}()
 
 	if gVar.noBind {
-		if sutils.IsPortAvailable(gVar.IpAddress, gVar.Port, gVar.timeout) {
-			log.Warningln("Port is available. App is not running")
+		if snetutils.IsPortTcpAvailable(gVar.IpAddress, gVar.Port, gVar.timeout) {
+			log.Info("Port is available. App is not running")
 		} else {
 			if gVar.Poll() {
-				log.Errorln("App is running....\nExit!")
+				log.Error("App is running....\nExit!")
 				os.Exit(1)
 				//				return errors.New("App is running....")
 			} else {
@@ -355,7 +368,7 @@ func (gVar *RunOnceConf) Run() (err error) {
 
 		if err != nil {
 			if gVar.Poll() {
-				log.Errorln("App is running....\nExit!")
+				log.Error("App is running....\nExit!")
 				os.Exit(1)
 			} else {
 				return errors.New("Port is used but not for this app!")
@@ -409,7 +422,7 @@ func (gVar *RunOnceConf) Run() (err error) {
 		}
 
 		if !gVar.noBind {
-			log.Infoln("Making sure all fd >= 3 is not close-on-exec")
+			log.Info("Making sure all fd >= 3 is not close-on-exec")
 
 			closeOnExec(false)
 		}
@@ -459,12 +472,12 @@ func (gVar *RunOnceConf) Run() (err error) {
 
 				select {
 				case <-gVar.ctx.Done():
-					if !sutils.IsProcessAlive(gVar.cmd.Process.Pid) {
+					if !pid.ProcessExists(gVar.cmd.Process.Pid) {
 						//					if gVar.cmd.ProcessState != nil {
 						gVar.cmd.Process.Kill()
 					} else {
 						if !gVar.cmd.ProcessState.Success() {
-							log.Errorln("Program error exit")
+							log.Error("Program error exit")
 						}
 					}
 					//					log.Printf("Done excute application '%s'", gVar.ExeRealNameRuntime)
@@ -488,7 +501,7 @@ func (gVar *RunOnceConf) Run() (err error) {
 	return nil
 }
 
-func NewAndRunOnce(port int) (*RunOnceConf, error) {
+func NewAndRunOnce(port int) (*RunOnce, error) {
 	econf := NewRunOnceFuncPort(port)
 	return econf, econf.Run()
 }

@@ -13,10 +13,18 @@ func Split(line string) ([]string, error) {
 	return Parse(line)
 }
 
+func SplitPosix(line string) ([]string, error) {
+	return ParsePosix(line)
+}
+
 // Join builds a command line string from an argument list by joining
 // all elements escaped for Bourne shell and separated by a space.
 func Join(words ...string) string {
 	return join(words...)
+}
+
+func JoinPosix(words ...string) string {
+	return joinposix(words...)
 }
 
 // Escape escapes a string so that it can be safely used in a Bourne shell command line.

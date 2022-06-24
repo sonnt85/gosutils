@@ -129,6 +129,8 @@ func Warnf(format string, v ...interface{}) {
 	_defaultLogger.Warnf(format, v...)
 }
 
+var Warning = Warnf
+
 // Infof calls the default logger's Infof method.
 func Printf(format string, v ...interface{}) {
 	_defaultLogger.Printf(format, v...)

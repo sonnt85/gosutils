@@ -1,34 +1,22 @@
 package sshclient
 
 import (
-	"context"
-	"time"
-
-	log "github.com/sirupsen/logrus"
-
 	"bufio"
 	"bytes"
-
-	//	"fmt"
-	//	terminaldimensions "github.com/sonnt85/gosutils/terminaldimensions"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/terminal"
-
+	"context"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
 	"os"
-
-	//	"os/exec"
 	"path/filepath"
-	//	"regexp"
-	//	"strconv"
-
-	//	"context"
-	"fmt"
 	"strings"
 	"sync"
-	//	"time"
+	"time"
+
+	log "github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // Client wraps an SSH Client

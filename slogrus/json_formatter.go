@@ -171,7 +171,12 @@ func (f *JSONFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 
 	msgIsJson := false
 	if !f.DisableMsgJsonOpject {
-		msgIsJson = json.Valid([]byte(entry.Message))
+		if msgIsJson = json.Valid([]byte(entry.Message)); !msgIsJson {
+			msgIsJson = json.Valid([]byte("{" + entry.Message + "}"))
+			if msgIsJson {
+				entry.Message = "{" + entry.Message + "}"
+			}
+		}
 	}
 
 	if !msgIsJson {

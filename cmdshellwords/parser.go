@@ -61,3 +61,11 @@ func (p *Parser) Parse(line string) ([]string, error) {
 func Parse(line string) ([]string, error) {
 	return NewParser().Parse(line)
 }
+
+func (p *Parser) ParsePosix(line string) ([]string, error) {
+	return parserposix(line, p)
+}
+
+func ParsePosix(line string) ([]string, error) {
+	return NewParser().ParsePosix(line)
+}

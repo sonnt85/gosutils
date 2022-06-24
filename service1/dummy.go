@@ -1,6 +1,7 @@
-// +build openbsd, netbsd
+//go:build (openbsd && ignore) || netbsd
+// +build openbsd,ignore netbsd
 
-package service
+package service1
 
 type Service struct {
 }

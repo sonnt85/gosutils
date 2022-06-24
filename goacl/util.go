@@ -3,7 +3,7 @@
 package goacl
 
 import (
-	"github.com/sonnt85/gosutils/goalc/api"
+	"github.com/sonnt85/gosutils/goacl/api"
 	"golang.org/x/sys/windows"
 
 	"unsafe"

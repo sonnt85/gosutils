@@ -72,7 +72,7 @@ func ReflectStructMethod(Iface interface{}, MethodName string) error {
 func SlideHasElem(s interface{}, elem interface{}) bool {
 	arrV := reflect.ValueOf(s)
 
-	if arrV.Kind() == reflect.Slice {
+	if arrV.Kind() == reflect.Slice || arrV.Kind() == reflect.Array {
 		for i := 0; i < arrV.Len(); i++ {
 
 			// XXX - panics if slice element points to an unexported struct field
@@ -101,7 +101,7 @@ func ReflectStructField(Iface interface{}, FieldName string) error {
 	// 'dereference' with Elem() and get the field by name
 	Field := ValueIface.Elem().FieldByName(FieldName)
 	if !Field.IsValid() {
-		return fmt.Errorf("Interface `%s` does not have the field `%s`", ValueIface.Type(), FieldName)
+		return fmt.Errorf("interface `%s` does not have the field `%s`", ValueIface.Type(), FieldName)
 	}
 	return nil
 }

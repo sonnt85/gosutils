@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/sonnt85/gosutils/cmdshellwords"
-	"github.com/sonnt85/gosystem/elevate"
 	"golang.org/x/sys/windows"
 )
 
@@ -26,14 +25,18 @@ func execCommandShellElevatedEnvTimeout(exe string, showCmd int32, moreenvs map[
 	verb := "runas"
 
 	if len(exe) == 0 {
-		exe, _ = os.Executable()
+		exe, err = os.Executable()
+		if err != nil {
+			return
+		}
 	}
 	cwd, _ := os.Getwd()
 	argstr := cmdshellwords.Join(args...)
-	elevate.RunMeElevated()
-	// strings.Join(args, " ")
+	// argstr := strings.Join(args, " ") //notwork
+	// elevate.RunMeElevated()
 	// argstr := makeCmdLine(args)
-	// fmt.Println("Window elevate cmd: ", exe, showCmd, moreenvs, args)
+	// showCmd = 1
+	// fmt.Println("Window elevate cmd: ", exe, showCmd, moreenvs, args, argstr)
 
 	verbPtr, _ := syscall.UTF16PtrFromString(verb)
 	exePtr, _ := syscall.UTF16PtrFromString(exe)
