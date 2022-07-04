@@ -146,7 +146,7 @@ func (r *Request) WithTokenAuth(token string) *Request {
 }
 
 func (r *Request) WithDigestAuth(name, password string) *Request {
-	r.Auth = &digestAuth{Username: name, Password: password}
+	r.Auth = &DigestAuth{Username: name, Password: password}
 	return r
 }
 

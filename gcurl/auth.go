@@ -61,7 +61,7 @@ func (a *JWTAuth) HeaderValue() string {
 	return "Bearer " + token
 }
 
-type digestAuth struct {
+type DigestAuth struct {
 	*DigestTransport
 	Username string
 	Password string
@@ -81,7 +81,7 @@ func applyAuth(r *Request) bool {
 		r.Headers["Authorization"] = v.HeaderValue()
 	case string: //req.Auth = "string"
 		r.Headers["Authorization"] = v
-	case *digestAuth:
+	case *DigestAuth:
 		if v.DigestTransport == nil {
 			v.DigestTransport = NewDigestTransport(v.Username, v.Password)
 		} else {
