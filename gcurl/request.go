@@ -1,9 +1,12 @@
 package gcurl
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/golang-jwt/jwt"
 )
 
 type Request struct {
@@ -55,7 +58,9 @@ func (r *Request) Call(method string, url string, body interface{}, paras ...int
 	}
 	r.Client.Timeout = timeout
 
-	applyAuth(r)
+	if !applyAuth(r) {
+		return nil, fmt.Errorf("o not know the Authen type")
+	}
 	conlen := int64(0)
 
 	if fixSizePayload {
@@ -142,6 +147,22 @@ func (r *Request) WithTokenAuth(token string) *Request {
 
 func (r *Request) WithDigestAuth(name, password string) *Request {
 	r.Auth = &digestAuth{Username: name, Password: password}
+	return r
+}
+
+func (r *Request) WithBearerAuth(token string) *Request {
+	r.Auth = &BearerAuth{token}
+	return r
+}
+
+func (r *Request) WithJWTAuth(jwtkey string, mapdata jwt.MapClaims) *Request {
+	r.Auth = &JWTAuth{jwtkey: jwtkey, MapClaims: mapdata}
+	return r
+}
+
+//Support basic,digest, jwt
+func (r *Request) WithAuth(auth interface{}) *Request {
+	r.Auth = auth
 	return r
 }
 
