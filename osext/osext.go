@@ -1,4 +1,6 @@
-/package osext // import "github.com/kardianos/osext"
+package osext
+
+// import "github.com/kardianos/osext"
 
 import "path/filepath"
 

@@ -7,11 +7,16 @@
 package lockedfile
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"runtime"
+)
+
+var (
+	MISSING_FILE = errors.New("Path is empty")
 )
 
 // A File is a locked *os.File.

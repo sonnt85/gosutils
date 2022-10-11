@@ -15,12 +15,13 @@
 package gcauto
 
 import (
-	"github.com/sonnt85/gosutils/slogrus"
 	"math"
 	"os"
 	"runtime/debug"
 	"strconv"
 	"sync/atomic"
+
+	"github.com/sonnt85/gosutils/slogrus"
 )
 
 const (
@@ -105,8 +106,9 @@ func (t *gcauto) tuning() {
 	if threshold <= 0 {
 		return
 	}
-	t.setGCPercent(calcGCPercent(inuse, threshold))
-	return
+	gogc := calcGCPercent(inuse, threshold)
+	slogrus.Debugf("Config new gogc: %d [%d]", gogc, inuse)
+	t.setGCPercent(gogc)
 }
 
 // threshold = inuse + inuse * (gcPercent / 100)

@@ -59,7 +59,7 @@ func (r *Request) Call(method string, url string, body interface{}, paras ...int
 	r.Client.Timeout = timeout
 
 	if !applyAuth(r) {
-		return nil, fmt.Errorf("o not know the Authen type")
+		return nil, fmt.Errorf("do not know the Authen type")
 	}
 	conlen := int64(0)
 
@@ -175,6 +175,7 @@ func (r *Request) reset(payload *Payload) {
 	}
 }
 
+//query may be one of the following types:  url.Values, map[string]string, map[string][]string
 func NewURL(u string, query interface{}) string {
 	if query == nil {
 		return u

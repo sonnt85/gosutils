@@ -33,9 +33,9 @@ type Mutex struct {
 
 // MutexAt returns a new Mutex with Path set to the given non-empty path.
 func MutexAt(path string) *Mutex {
-	if path == "" {
-		panic("lockedfile.MutexAt: path must be non-empty")
-	}
+	// if path == "" {
+	// 	panic("lockedfile.MutexAt: path must be non-empty")
+	// }
 	return &Mutex{Path: path}
 }
 
@@ -50,7 +50,7 @@ func (mu *Mutex) String() string {
 // accompanying error. (See https://golang.org/issue/20803.)
 func (mu *Mutex) Lock() (unlock func(), err error) {
 	if mu.Path == "" {
-		panic("lockedfile.Mutex: missing Path during Lock")
+		return nil, MISSING_FILE
 	}
 	mu.mu.Lock()
 
@@ -73,7 +73,7 @@ func (mu *Mutex) Lock() (unlock func(), err error) {
 
 func (mu *Mutex) TryLock() (unlock func(), err error) {
 	if mu.Path == "" {
-		panic("lockedfile.Mutex: missing Path during Lock")
+		return nil, MISSING_FILE
 	}
 	if !mu.mu.TryLock() {
 		return nil, errors.New("can not trylock")
@@ -83,7 +83,7 @@ func (mu *Mutex) TryLock() (unlock func(), err error) {
 	// permission error. That's actually what we want: if we add an RLock method
 	// in the future, it should call OpenFile with O_RDONLY and will require the
 	// files must be readable, so we should not let the caller make any
-	// assumptions about Mutex working with write-only files.
+	// assumptions about Mutex working with write-only files.vd
 	f, err := OpenFile(mu.Path, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
@@ -97,7 +97,7 @@ func (mu *Mutex) TryLock() (unlock func(), err error) {
 
 func (mu *Mutex) RLock() (unlock func(), err error) {
 	if mu.Path == "" {
-		panic("lockedfile.Mutex: missing Path during Lock")
+		return nil, MISSING_FILE
 	}
 	mu.mu.RLock()
 
@@ -114,7 +114,8 @@ func (mu *Mutex) RLock() (unlock func(), err error) {
 
 func (mu *Mutex) TryRLock() (unlock func(), err error) {
 	if mu.Path == "" {
-		panic("lockedfile.Mutex: missing Path during Lock")
+		return nil, MISSING_FILE
+		// return nil, errors.New("lockedfile.Mutex: missing Path during Lock")
 	}
 
 	if !mu.mu.TryRLock() {
@@ -133,9 +134,9 @@ func (mu *Mutex) TryRLock() (unlock func(), err error) {
 }
 
 func (mu *Mutex) RLockTimeout(timeout time.Duration, intervalCheck ...time.Duration) (unlock func(), err error) {
-	if timeout == 0 {
-		return mu.RLock()
-	}
+	// if timeout == 0 {
+	// 	return mu.RLock()
+	// }
 	timeoutAt := time.Now().Add(timeout)
 	timeoutns := timeout.Nanoseconds()
 	stepSleep := time.Duration(endec.RandRangeInt64(timeoutns/50, timeoutns/10))
@@ -145,7 +146,7 @@ func (mu *Mutex) RLockTimeout(timeout time.Duration, intervalCheck ...time.Durat
 	for {
 		unlock, err = mu.TryRLock()
 		if err != nil {
-			if time.Now().After(timeoutAt) {
+			if timeoutns != 0 && time.Now().After(timeoutAt) {
 				err = fmt.Errorf("Timeout")
 				return
 			} else {
@@ -159,9 +160,9 @@ func (mu *Mutex) RLockTimeout(timeout time.Duration, intervalCheck ...time.Durat
 }
 
 func (mu *Mutex) LockTimeout(timeout time.Duration, intervalCheck ...time.Duration) (unlock func(), err error) {
-	if timeout == 0 {
-		return mu.Lock()
-	}
+	// if timeout == 0 {
+	// return mu.Lock()
+	// }
 	timeoutAt := time.Now().Add(timeout)
 	timeoutns := timeout.Nanoseconds()
 	stepSleep := time.Duration(endec.RandRangeInt64(timeoutns/50, timeoutns/10))
@@ -172,7 +173,7 @@ func (mu *Mutex) LockTimeout(timeout time.Duration, intervalCheck ...time.Durati
 	for {
 		unlock, err = mu.TryLock()
 		if err != nil {
-			if time.Now().After(timeoutAt) {
+			if timeoutns != 0 && time.Now().After(timeoutAt) {
 				err = fmt.Errorf("Timeout")
 				return
 			} else {

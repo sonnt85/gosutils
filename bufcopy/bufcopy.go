@@ -9,10 +9,15 @@ type BufCopy struct {
 	*sync.Pool
 }
 
-func New() *BufCopy {
+func New(default_size ...int) *BufCopy {
+	size := 32 * 1024 // large objects(> 32 kB) are allocated straight from the heap
+	if len(default_size) != 0 {
+		size = default_size[0]
+	}
 	p := &BufCopy{&sync.Pool{
 		New: func() interface{} {
-			return make([]byte, 32*1024) // large objects(> 32 kB) are allocated straight from the heap
+			nb := make([]byte, size)
+			return &nb
 		},
 	}}
 	return p
@@ -29,14 +34,14 @@ func (b *BufCopy) Copy(dst io.Writer, src io.Reader) (written int64, err error) 
 		return rt.ReadFrom(src)
 	}
 
-	buf := b.Get().([]byte)
+	buf := b.Get().(*[]byte)
 	defer b.Put(buf)
 	var nr, nw int
 	var er, ew error
 	for {
-		nr, er = src.Read(buf)
+		nr, er = src.Read(*buf)
 		if nr > 0 {
-			nw, ew = dst.Write(buf[0:nr])
+			nw, ew = dst.Write((*buf)[0:nr])
 			if nw > 0 {
 				written += int64(nw)
 			}

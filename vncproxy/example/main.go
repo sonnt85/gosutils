@@ -27,8 +27,12 @@ func main() {
 func NewVNCProxy() *vncproxy.Proxy {
 	return vncproxy.New(&vncproxy.Config{
 		Logger: logrus.StandardLogger(),
-		TokenHandler: func(r *http.Request) (addr string, err error) {
+		TokenHandler: func(r *http.Request, retToken ...*string) (addr string, err error) {
 			return ":5901", nil
+		},
+		OnConnectFunc: func(*vncproxy.Peer) {
+		},
+		OnDisconectFunc: func(*vncproxy.Peer) {
 		},
 	})
 }

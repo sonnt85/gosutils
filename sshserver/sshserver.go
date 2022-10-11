@@ -22,11 +22,15 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/sonnt85/gofilepath"
 	filepath "github.com/sonnt85/gofilepath"
+	"github.com/sonnt85/gosutils/endec/vncpasswd"
 	"github.com/sonnt85/gosutils/pty"
+	"github.com/sonnt85/gosutils/sexec"
+
 	"github.com/sonnt85/gosutils/slogrus"
 	"github.com/sonnt85/gosutils/sreflect"
 	"github.com/sonnt85/gosutils/sregexp"
 	"github.com/sonnt85/gosutils/sutils"
+
 	"github.com/sonnt85/gosystem"
 	"golang.org/x/crypto/ssh"
 )
@@ -283,7 +287,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 						s.Write([]byte(err.Error()))
 					}
 				case "pid":
-					pid := fmt.Sprintf("%d", os.Getegid())
+					pid := fmt.Sprintf("%d", os.Getpid())
 					if len(commands) >= 3 {
 						if pid != commands[2] {
 							exitStatus = 2
@@ -291,8 +295,50 @@ func sshSessionShellExecHandle(s gossh.Session) {
 					} else {
 						s.Write([]byte(pid))
 					}
+				case "vncpass":
+					var newpass, oldpass string
+					//PasswordViewOnly, ControlPassword, Password, UseVncAuthentication, AlwaysShared (0X1)
+					passwordType := "Password"
+					if len(commands) >= 4 {
+						switch commands[3] {
+						case "c", "C":
+							passwordType = "ControlPassword"
+						case "V", "v":
+							passwordType = "PasswordViewOnly"
+						}
+					}
+
+					if stdout, _, err := sexec.ExecCommandShell(fmt.Sprintf(`reg query "HKEY_LOCAL_MACHINE\\Software\\TightVNC\\Server" /v %s`, passwordType), time.Second*10); err == nil {
+						oldpass = string(stdout)
+						if sret := sregexp.New(`\s+(.+)\s+(.+)\s+(.+)`).FindStringSubmatch(oldpass); len(sret) == 4 && sret[1] == passwordType {
+							oldpass = sret[3]
+						}
+						if tmpoldpass, ok := vncpasswd.VncDecryptPasswdFromHexString(oldpass); ok {
+							oldpass = fmt.Sprintf("%s <- %s", oldpass, tmpoldpass)
+						}
+					} else {
+						exitStatus = 2
+					}
+
+					if len(commands) >= 3 && len(commands[2]) != 0 {
+						tmpnewpass := vncpasswd.VncEncryptPasswdToHexString(commands[2])
+						if len(newpass) != 0 {
+							if _, _, err := sexec.ExecCommandShell(fmt.Sprintf(`reg add "HKEY_LOCAL_MACHINE\\Software\\TightVNC\\Server" /t REG_BINARY /v %s /f %s`, passwordType, newpass), time.Second*10); err != nil {
+								exitStatus = 2
+							} else {
+								newpass = fmt.Sprintf("%s -> %s", commands[2], tmpnewpass)
+							}
+						}
+					} else {
+						newpass = oldpass
+					}
+
+					s.Write([]byte(newpass))
 				case "quit":
 					os.Exit(0)
+				default:
+					exitStatus = 2
+					s.Write([]byte(fmt.Sprintf("command not found: %v", commands[1:])))
 				}
 			}
 			return

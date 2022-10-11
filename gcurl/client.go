@@ -87,6 +87,7 @@ func setProxyTransport(transport *http.Transport, proxyURL string) error {
 			return err
 		}
 		transport.Proxy = http.ProxyFromEnvironment
+		// transport.DialContext
 		transport.Dial = dialer.Dial
 	}
 	return nil
