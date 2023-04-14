@@ -365,18 +365,6 @@ func MMDeleteBearer(bindex string) (err error) {
 	}
 }
 
-func MMSimpleConnect(apn, username, passowrd string) (ok bool) {
-	ok = false
-	mmparas := fmt.Sprintf(`--simple-connect='ip-type=ipv4,apn=%s,user=%s,password=%s'`, apn, username, passowrd)
-	if _, err := gonmmm.MMRunCommand(mmparas, time.Minute*6); err == nil {
-		return true
-	} else {
-		return
-	}
-	return
-	//	mmcli -m 2 --create-bearer="apn=<APN Address Here>,user=<User Name Here>,password=<Password Here>"
-}
-
 func MMGetPDP() (pdps map[string][]string, err error) { //auto delete empty apn
 	var tmpstring string
 	pdps = map[string][]string{}
@@ -698,8 +686,8 @@ func MMStatsGSM() string {
 	return ""
 }
 
-//"Network operator: (2,\"JP DOCOMO\",\"DOCOMO\",\"44010\",7),(3,\"SoftBank\",\"SoftBank\",\"44020\",2),,(0,1,2,3,4),(0,1,2)",
-//NTT DOCOMO
+// "Network operator: (2,\"JP DOCOMO\",\"DOCOMO\",\"44010\",7),(3,\"SoftBank\",\"SoftBank\",\"44020\",2),,(0,1,2,3,4),(0,1,2)",
+// NTT DOCOMO
 var _soracom_operator_list = []string{"docomo", "kddi", "softbank"}
 
 func GetGsmDevice() string {
@@ -720,14 +708,15 @@ func GetGsmDevice() string {
 }
 
 func MMGetBearer() string {
+	// return gonmmm.MMGetField(`modem.generic.bearers.value\[1\]`)
 	cmd := `index=$(mmcli -L | grep -oPe 'org[^\s]+' | grep -Poe '[0-9]+$')
 	[[ $index ]] &&  {
-	   bearerindex=$(mmcli -m ${index} | grep Bearer | grep -Poe '[0-9]+$')
+	   bearerindex=$(mmcli -m ${index} | grep -Ee '^\s*Bearer' | grep -Poe '[0-9]+$' | head -n 1)
 	   [[ ${bearerindex} ]] &&  echo -n "${bearerindex}"
 	}
 	`
 	if stdout, _, err := sexec.ExecCommandShell(cmd, time.Second*1); err != nil {
-		fmt.Println("Can not get GsnDevice")
+		fmt.Println("Can not get GsmDevice")
 	} else {
 		return sutils.StringTrimLeftRightNewlineSpace(string(stdout))
 	}
