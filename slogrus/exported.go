@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime/debug"
+	"strings"
 
 	"github.com/mattn/go-colorable"
 	"github.com/sonnt85/gosystem"
@@ -47,23 +48,62 @@ func NewLogFile(logPath string, log_level Level, pretty bool, diableStdout bool,
 	return slog
 }
 
+func Stack(skipn int) (stackResult string) {
+	// stack := make([]byte, 2048)
+	// length := runtime.Stack(stack, false)
+	stackString := string(debug.Stack())
+	stackLines := strings.Split(stackString, "\n")
+	if len(stackLines) >= skipn {
+		stackLines = stackLines[skipn:]
+	} else {
+		stackLines = []string{}
+	}
+
+	stackResult = strings.Join(stackLines, "\n")
+	return
+}
+
+//Number 11 may change
+func traceStackSkip(msg ...any) (retmsg []any) {
+	stackString := string(debug.Stack())
+	stackLines := strings.Split(stackString, "\n")
+	skipStackLines := make([]string, 0)
+	found := false
+	for i, l := range stackLines {
+		if strings.Contains(l, "gosutils/slogrus") || strings.Contains(l, "runtime/debug") {
+			found = true
+			continue
+		}
+		if found {
+			skipStackLines = append(skipStackLines, stackLines[i:]...)
+			break
+		} else {
+			skipStackLines = append(skipStackLines, l)
+		}
+	}
+	return append(msg, strings.Join(skipStackLines, "\n"))
+}
+
 func (slog *Slog) TraceStack(msg ...any) {
-	msg = append(msg, string(debug.Stack()))
-	slog.Trace(msg...)
+	nmsg := traceStackSkip(msg...)
+	slog.Trace(nmsg...)
 }
 
 func (slog *Slog) TracefStack(format string, args ...interface{}) {
-	args = append(args, string(debug.Stack()))
+	args = traceStackSkip(args...)
 	format = format + "[%s]"
 	slog.Tracef(format, args...)
 }
 
 func TracefStack(format string, args ...interface{}) {
-	stdSlog.TracefStack(format, args...)
+	args = traceStackSkip(args...)
+	format = format + "[%s]"
+	stdSlog.Tracef(format, args...)
 }
 
 func TraceStack(msg ...any) {
-	stdSlog.TraceStack(msg...)
+	nmsg := traceStackSkip(msg...)
+	stdSlog.Trace(nmsg...)
 }
 
 func (slog *Slog) GetOldLogFiles() (retpaths []string) {
