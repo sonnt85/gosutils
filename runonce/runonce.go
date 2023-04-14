@@ -13,7 +13,7 @@ import (
 
 	"github.com/sonnt85/gosutils/cmdshellwords"
 	"github.com/sonnt85/gosutils/sutils"
-	"github.com/sonnt85/gosystem/pid"
+	"github.com/sonnt85/gosystem/pidfile"
 	"github.com/sonnt85/snetutils"
 
 	"context"
@@ -472,7 +472,7 @@ func (gVar *RunOnce) Run() (err error) {
 
 				select {
 				case <-gVar.ctx.Done():
-					if !pid.ProcessExists(gVar.cmd.Process.Pid) {
+					if !pidfile.ProcessExists(gVar.cmd.Process.Pid) {
 						//					if gVar.cmd.ProcessState != nil {
 						gVar.cmd.Process.Kill()
 					} else {
