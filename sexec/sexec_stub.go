@@ -12,9 +12,13 @@ import (
 	"time"
 )
 
-func execCommandShellElevatedEnvTimeout(name string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
+//darwin no check
+func execCommandShellElevatedEnvTimeout(ctxc context.Context, name string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(name, args...)
+	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
+	defer cancelFn()
+	cmd := exec.CommandContext(ctx, name, args...)
+
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
@@ -25,25 +29,48 @@ func execCommandShellElevatedEnvTimeout(name string, showCmd int32, moreenvs map
 		}
 	}
 	err = cmd.Start()
+
 	if err != nil {
 		return stdOut, stdErr, err
 	}
-	if timeout != 0 {
-		ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
-		defer cancelFn()
-		go func() {
-			<-ctx.Done()
-			if ctx.Err() == context.DeadlineExceeded {
-				cmd.Process.Kill()
-			}
-		}()
+	needKill := false
+
+	if ctxc == nil {
 		err = cmd.Wait()
-		if ctx.Err() == nil {
-			cancelFn()
-		}
 	} else {
-		err = cmd.Wait()
+		c := make(chan error, 1)
+
+		// Thực hiện cmd.Wait() trong một goroutine riêng
+		go func() {
+			c <- cmd.Wait()
+		}()
+
+		select {
+		case err = <-c: // cmd.Wait()
+		case <-ctxc.Done():
+			needKill = true
+		}
 	}
-	return stdout.Bytes(), stderr.Bytes(), err
+
+	if needKill {
+		killChilds(cmd.Process.Pid)
+		cmd.Process.Kill()
+	}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		err = fmt.Errorf("124:Timeout")
+	}
+
+	if err != nil {
+		errstr := fmt.Sprintf("error code: [%s]", err)
+		if stdout.Len() != 0 {
+			errstr = fmt.Sprintf("%s,stdout: [%s]", errstr, stdout.String())
+		}
+		if stderr.Len() != 0 {
+			errstr = fmt.Sprintf("%s,stderr: [%s]", errstr, stderr.String())
+		}
+		err = fmt.Errorf(errstr)
+	}
+	return
 	// return ExecCommand(exe, args...)
 }

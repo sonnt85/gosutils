@@ -16,6 +16,8 @@ func TestExecBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, err := ioutil.ReadFile(path)
+	b = []byte(`#!/bin/bash
+`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,4 +26,19 @@ func TestExecBytes(t *testing.T) {
 	require.Nil(t, err)
 	fmt.Println(string(out))
 
+}
+
+func TestExecAsScript(t *testing.T) {
+	if o, _, err := ExecCommandShell(`#/bin/bash;
+	 ls -lhas /root`, 0); err == nil {
+		t.Logf("%s", string(o))
+	} else {
+		t.Error(err)
+	}
+
+	t.Log("done")
+}
+func TestExecAsRoot(t *testing.T) {
+	ExecCommandShellElevatedEnvTimeout("ls", 0, nil, time.Second*5, "-lhas", "/root")
+	t.Log("done")
 }

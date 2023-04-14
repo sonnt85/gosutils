@@ -1,123 +1,43 @@
 package sexec
 
 import (
-	"bytes"
-	"context"
-	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"syscall"
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/sonnt85/gofilepath"
 	"github.com/sonnt85/gosutils/sutils"
 )
 
-func ExecCommandShellEnvTimeout(script string, moreenvs map[string]string, timeout time.Duration) (stdOut, stdErr []byte, err error) {
-	shellbin := ""
-	shellrunoption := []string{}
+func ExecCommandShellEnvTimeout(script string, moreenvs map[string]string, timeout time.Duration, scriptrunoption ...string) (stdOut, stdErr []byte, err error) {
+	return ExecCommandCtxShellEnvTimeout(nil, script, moreenvs, timeout, scriptrunoption...)
+}
 
-	if runtime.GOOS == "windows" {
-		if shellbin = os.Getenv("COMSPEC"); shellbin == "" {
-			shellbin = "cmd"
-		}
-		lines := sutils.String2lines(script)
-		if len(lines) > 1 {
-			// exepath := shellwords.Join(command)
-			batfile := gofilepath.TempFileCreateWithContent([]byte(script), "scriptbytes.bat")
-			if len(batfile) != 0 {
-				defer os.RemoveAll(filepath.Dir(batfile))
-			} else {
-				return nil, nil, errors.New("can not create tmp file")
-			}
-			shellrunoption = []string{"/c", batfile}
-		} else {
-			if len(script) != 0 {
-				shellrunoption = []string{"/c", script}
-			}
-		}
-
-	} else { //linux
-		shellrunoption = []string{"-c", "--", script}
-		shellbin = os.Getenv("SHELL")
-		for _, v := range []string{"bash", "sh"} {
-			if _, err := exec.LookPath(v); err == nil {
-				shellbin = v
-				break
-			}
-		}
-	}
-	if len(shellbin) == 0 {
-		return nil, nil, errors.New("missing binary shell")
-	}
-	// arg = append(shellrunoption, arg...)
-	return ExecCommandEnvTimeout(shellbin, moreenvs, timeout, shellrunoption...)
+func ExecCommandScriptEnvTimeout(scriptbin, script string, moreenvs map[string]string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
+	return ExecCommandCtxScriptEnvTimeout(nil, scriptbin, script, moreenvs, timeout, arg...)
 }
 
 // func ExecCommandShellEnvTimeoutAs(script string, moreenvs map[string]string, timeout time.Duration) (stdOut, stdErr []byte, err error) {
 // }
 
-func ExecCommandShell(script string, timeout time.Duration, redirect2null ...bool) (stdOut, stdErr []byte, err error) {
-	return ExecCommandShellEnvTimeout(script, map[string]string{}, timeout)
+func ExecCommandShell(script string, timeout time.Duration, dummy ...bool) (stdOut, stdErr []byte, err error) {
+	return ExecCommandCtxShell(nil, script, timeout)
 }
 
 func ExecCommandEnvTimeout(name string, newenvs map[string]string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
-	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(name, arg...)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if len(newenvs) != 0 {
-		// cmd.Env = os.Environ()
-		for k, v := range newenvs {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
-	err = cmd.Start()
-	if err != nil {
-		return stdOut, stdErr, err
-	}
-	if timeout != 0 {
-		ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
-		defer cancelFn()
-		go func() {
-			<-ctx.Done()
-			if ctx.Err() == context.DeadlineExceeded {
-				cmd.Process.Kill()
-			}
-		}()
-		err = cmd.Wait()
-		if ctx.Err() == nil {
-			cancelFn()
-		}
-	} else {
-		err = cmd.Wait()
-	}
-	if err != nil {
-		errstr := fmt.Sprintf("error code: [%s]", err)
-		if stdout.Len() != 0 {
-			errstr = fmt.Sprintf("%s,stdout: [%s]", errstr, stdout.String())
-		}
-		if stderr.Len() != 0 {
-			errstr = fmt.Sprintf("%s,stderr: [%s]", errstr, stderr.String())
-		}
-		err = fmt.Errorf(errstr)
-	}
-	return stdout.Bytes(), stderr.Bytes(), err
+	return ExecCommandCtxEnvTimeout(nil, name, newenvs, timeout, arg...)
 }
 
-//run command without timeout
+// run command without timeout
 func ExecCommand(name string, arg ...string) (stdOut, stdErr []byte, err error) {
-	return ExecCommandEnvTimeout(name, map[string]string{}, 0, arg...)
+	return ExecCommandCtx(nil, name, arg...)
 }
 
-//run command with timeout
+// run command with timeout
 func ExecCommandTimeout(name string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
-	return ExecCommandEnvTimeout(name, map[string]string{}, timeout, arg...)
+	return ExecCommandCtxTimeout(nil, name, timeout, arg...)
 }
 
 func LookPath(efile string) string {
@@ -128,73 +48,32 @@ func LookPath(efile string) string {
 }
 
 func ExecCommandEnv(name string, moreenvs map[string]string, arg ...string) (stdOut, stdErr []byte, err error) {
-	return ExecCommandEnvTimeout(name, moreenvs, 0, arg...)
+	return ExecCommandCtxEnv(nil, name, moreenvs, arg...)
 }
 
 func GetExecPath() (pathexe string, err error) {
 	pathexe, err = os.Executable()
 	if err != nil {
 		// log.Println("Cannot  get binary")
+		// return os.Args[0], nil
 		return "", err
 	}
-	pathexe, err = filepath.EvalSymlinks(pathexe)
-	if err != nil {
-		// log.Println("Cannot  get binary")
-		return "", err
+	// os.Readlink(pathexe)
+	var tmppathexe string
+	if tmppathexe, err = filepath.EvalSymlinks(pathexe); err == nil {
+		pathexe = tmppathexe
+	} else {
+		err = nil
 	}
 	return
 }
 
-//spaw father to  child via syscall, merge executablePath to executableArgs if first executableArgs[0] is diffirence executablePath
-func ExecCommandSyscall(executablePath string, executableArgs []string, executableEnvs []string) error {
-	//  var result string
-	if len(executableArgs) == 0 {
-		executableArgs = make([]string, 0)
-		if len(executablePath) == 0 {
-			executableArgs = os.Args[1:]
-		}
-	}
-
-	if len(executablePath) == 0 {
-		executablePath, _ = GetExecPath()
-	} else {
-		executablePath, _ = filepath.Abs(executablePath)
-	}
-
-	if len(executableEnvs) == 0 {
-		executableEnvs = os.Environ()
-	}
-
-	var binary string
-	var err error
-	binary, err = exec.LookPath(executablePath)
-
-	// if _, err = os.Stat(executablePath); err == nil {
-	// 	binary, err = filepath.Abs(executablePath)
-	// } else {
-	// 	binary, err = exec.LookPath(executablePath)
-	// 	log.Errorf("Error LookPath: %s", err)
-	// }
-
-	if err != nil {
-		log.Errorf("Error: %s", err)
-		return err
-	}
-	//	time.Sleep(1 * time.Second)
-	tmpslide := []string{filepath.Base(binary)}
-	if tmpslide[0] == executableArgs[0] {
-	} else {
-		executableArgs = append(tmpslide, executableArgs...)
-	}
-
-	err = syscall.Exec(binary, executableArgs, executableEnvs)
-	if err != nil {
-		log.Errorf("error: %s %v", binary, err)
-	}
-	return err
+// spaw father to  child via syscall, merge executablePath to executableArgs if first executableArgs[0] is diffirence executablePath
+func ExecCommandSyscall(executablePath string, executableArgs []string, executableEnvs map[string]string) error {
+	return ExecCommandCtxSyscall(nil, executablePath, executableArgs, executableEnvs)
 }
 
-func ExecByteTimeOutOld(byteprog []byte, progname, workdir string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {
+func ExecBytesToFileEnvTimeout(byteprog []byte, progname, workdir string, newenvs map[string]string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {
 	var filePath string
 	if len(workdir) == 0 {
 		workdir, err = ioutil.TempDir("", "system")
@@ -218,71 +97,41 @@ func ExecByteTimeOutOld(byteprog []byte, progname, workdir string, timeout time.
 		return retstdout, retstderr, err
 	}
 
-	var stdout, stderr bytes.Buffer
 	//sutils.PathHasFile(filepath, PATH)
 	os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(sutils.PathGetEnvPathValue(), filepath.Dir(filePath)))
 	defer os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathRemove(sutils.PathGetEnvPathValue(), filepath.Dir(filePath)))
-
-	cmd := exec.Command(progname, args...)
-
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err = cmd.Start()
-	if err != nil {
-		return retstdout, retstderr, err
-	}
-
-	if timeout != 0 {
-		ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
-		defer cancelFn()
-		go func() {
-			<-ctx.Done()
-			if ctx.Err() == context.DeadlineExceeded {
-				cmd.Process.Kill()
-			}
-		}()
-		err = cmd.Wait()
-		if ctx.Err() == nil {
-			cancelFn()
-		}
-	} else {
-		err = cmd.Wait()
-	}
-	return stdout.Bytes(), stderr.Bytes(), err
+	return ExecCommandEnvTimeout(progname, newenvs, timeout, args...)
 }
 
 func ExecBytesEnvTimeout(byteprog []byte, name string, moreenvs map[string]string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {
-	var f *os.File
-	f, err = open(byteprog, name)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer clean(f)
-	return ExecCommandEnvTimeout(f.Name(), moreenvs, timeout, args...)
+	return ExecBytesCtxEnvTimeout(nil, byteprog, name, moreenvs, timeout, args...)
 }
 
 func ExecBytesEnv(byteprog []byte, name string, moreenvs map[string]string, args ...string) (retstdout, retstderr []byte, err error) {
-	return ExecBytesEnvTimeout(byteprog, name, moreenvs, 0, args...)
+	return ExecBytesCtxEnv(nil, byteprog, name, moreenvs, args...)
+	// TODO: Validate user input
+	// return ExecBytesCtxEnv(context.TODO(), byteprog, name, moreenvs, args...)
+
 }
 
 func ExecBytesTimeout(byteprog []byte, name string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {
-	return ExecBytesEnvTimeout(byteprog, name, nil, timeout, args...)
+	return ExecBytesCtxTimeout(nil, byteprog, name, timeout, args...)
 }
 
 func ExecBytes(byteprog []byte, name string, args ...string) (retstdout, retstderr []byte, err error) {
-	return ExecBytesEnvTimeout(byteprog, name, nil, 0, args...)
+	return ExecBytesCtx(nil, byteprog, name, args...)
 }
 
 // exe is empty will run current program
 func ExecCommandShellElevated(exe string, showCmd int32, args ...string) (stdOut, stdErr []byte, err error) {
-	return execCommandShellElevatedEnvTimeout(exe, showCmd, map[string]string{}, 0, args...)
+	return ExecCommandCtxShellElevated(nil, exe, showCmd, args...)
 }
 
 // exe is empty will run current program
 func ExecCommandShellElevatedEnvTimeout(exe string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
-	return execCommandShellElevatedEnvTimeout(exe, showCmd, moreenvs, timeout, args...)
+	return ExecCommandCtxShellElevatedEnvTimeout(nil, exe, showCmd, moreenvs, timeout, args...)
 }
 
-func MakeCmdLine(args []string) string {
+func MakeCmdLine(args ...string) string {
 	return makeCmdLine(args)
 }
