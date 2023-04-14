@@ -23,7 +23,7 @@ func NewRequest(client *http.Client) *Request {
 	}
 }
 
-//auto reset headers, cookies, and close body (if is closer) affter return
+// auto reset headers, cookies, and close body (if is closer) affter return
 func (r *Request) Call(method string, url string, body interface{}, paras ...interface{}) (*Response, error) {
 	timeout := time.Second * 30
 	fixSizePayload := false
@@ -160,7 +160,7 @@ func (r *Request) WithJWTAuth(jwtkey string, mapdata jwt.MapClaims) *Request {
 	return r
 }
 
-//Support basic,digest, jwt
+// Support basic,digest, jwt
 func (r *Request) WithAuth(auth interface{}) *Request {
 	r.Auth = auth
 	return r
@@ -175,7 +175,7 @@ func (r *Request) reset(payload *Payload) {
 	}
 }
 
-//query may be one of the following types:  url.Values, map[string]string, map[string][]string
+// query may be one of the following types:  url.Values, map[string]string, map[string][]string
 func NewURL(u string, query interface{}) string {
 	if query == nil {
 		return u
