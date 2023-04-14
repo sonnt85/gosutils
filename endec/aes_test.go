@@ -32,3 +32,27 @@ func TestAESGCM(t *testing.T) {
 
 	assert.Equal(t, plaintext, decrypted)
 }
+
+func TestAESCBC(t *testing.T) {
+	key := make([]byte, 32) // AES-128
+	_, err := rand.Read(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key = []byte("12345678910111211234567891011121")
+	plaintext := []byte("this will be encrypted")
+
+	iv := []byte("1234567891011121")
+	encrypted, err := AESCBCEncryptToBase64(key, plaintext, iv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(encrypted)
+	encrypted = "r9rGovsiMIUxO3BEVLlu1Q=="
+	decrypted, err := AESCBCDecryptFromBase64(key, encrypted, iv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, plaintext, decrypted)
+}

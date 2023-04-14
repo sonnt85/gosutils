@@ -51,7 +51,7 @@ func EncrypBytesToString(data []byte, passphrase []byte) (retbstring string, err
 	return base64.RawStdEncoding.EncodeToString(ciphertext), nil
 }
 
-//enctyp file filename to byte array use hash
+// enctyp file filename to byte array use hash
 func EncryptBytesToFile(filename string, data []byte, passphrase []byte) (err error) {
 	f, err := os.Create(filename)
 	if err != nil {
@@ -97,11 +97,15 @@ func Base64Decode(datastr string) ([]byte, error) {
 }
 
 func DecryptBytesFromString(datastr string, passphrase []byte) (retbytes []byte, err error) {
-	data, err := base64.RawStdEncoding.DecodeString(datastr)
+	var data []byte
+	data, err = base64.RawStdEncoding.DecodeString(datastr)
+	if err != nil {
+		return
+	}
 	return DecryptBytes(data, passphrase)
 }
 
-//decryp file filename to byte array use hash
+// decryp file filename to byte array use hash
 func DecryptFileToBytes(filename string, passphrase []byte) (retbytes []byte, err error) {
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -110,7 +114,7 @@ func DecryptFileToBytes(filename string, passphrase []byte) (retbytes []byte, er
 	return DecryptBytes(data, passphrase)
 }
 
-//decryp file filename to byte array use hash
+// decryp file filename to byte array use hash
 func DecryptFileToFile(inputFile, outputFile string, passphrase []byte) (err error) {
 	data, err := ioutil.ReadFile(inputFile)
 	if err != nil {
@@ -236,6 +240,7 @@ func GunzipFile(newfilename, gzipfilePath string, removeZipFile bool) (err error
 	return
 }
 
+// max compressLevel is 9
 func ZipFile(dst, src string, removeSrc bool, compressLevel ...int) (err error) {
 	var fw, fr *os.File
 	fr, err = os.Open(src)
@@ -315,7 +320,7 @@ func RandRangeInterger(from, to int) int {
 	if delta == 0 {
 		return from
 	}
-	return RandInt() / delta
+	return from + RandInt()%delta
 }
 
 func RandRangeInt64(from, to int64) int64 {
@@ -323,5 +328,5 @@ func RandRangeInt64(from, to int64) int64 {
 	if delta == 0 {
 		return from
 	}
-	return Randint64() / delta
+	return from + Randint64()%delta
 }
