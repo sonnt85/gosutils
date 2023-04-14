@@ -17,6 +17,7 @@ package gcauto
 import (
 	"math"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"sync/atomic"
@@ -33,7 +34,6 @@ var defaultGCPercent uint32 = 100
 
 func Init() {
 	threshold := TotalMemory() * 70 / 100
-	slogrus.Debug("Init tunning gc: ", threshold)
 	gogcEnv := os.Getenv("GOGC")
 	if len(gogcEnv) != 0 {
 		gogc, err := strconv.ParseInt(gogcEnv, 10, 32)
@@ -44,8 +44,15 @@ func Init() {
 	}
 	// limit := 4 * 1024 * 1024 * 1024
 	// threshold := TotalMemory() * uint64(defaultGCPercent) / 100
+	version := runtime.Version()[2:]
+	if v, err := strconv.ParseFloat(version, 64); err == nil && v < 1.19 {
+		slogrus.Debug("Init tunning gc: ", threshold)
+		Tuning(threshold)
+	} else {
+		slogrus.Debug("Init tunning gc(SetMemoryLimit): ", threshold)
+		debug.SetMemoryLimit(int64(threshold))
+	}
 
-	Tuning(threshold)
 }
 
 // Tuning sets the threshold of heap which will be respect by gc tuner.
@@ -77,8 +84,10 @@ func GetGCPercent() uint32 {
 // only allow one gc tuner in one process
 var globalGCAuto *gcauto = nil
 
-/* Heap
- _______________  => limit: host/cgroup memory hard limit
+/*
+	Heap
+	_______________  => limit: host/cgroup memory hard limit
+
 |               |
 |---------------| => threshold: increase GCPercent when gc_trigger < threshold
 |               |

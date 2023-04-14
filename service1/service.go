@@ -119,7 +119,7 @@ ExecStart=%s {{.Args}}
 
 [Install]
 WantedBy=multi-user.target
-`, sdaemon.GetPData().GetEnvName(), sdaemon.GetPData().GetMainEnvEncrypted(), slinkpath))
+`, gsjson.GetAppdata().GetEnvName(), gsjson.GetAppdata().GetMainEnvEncrypted(), slinkpath))
 	}
 	if autoinstall {
 		status, err := psrv.Status()
