@@ -9,6 +9,7 @@ import (
 	"github.com/antchfx/jsonquery"
 	"github.com/antchfx/xmlquery"
 	"github.com/beevik/etree"
+	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
 	"crypto/aes"
@@ -62,24 +63,24 @@ import (
 	"github.com/sonnt85/gosutils/gosed"
 )
 
-//func WindowsRunMeElevated() {
-//	verb := "runas"
-//	exe, _ := os.Executable()
-//	cwd, _ := os.Getwd()
-//	args := strings.Join(os.Args[1:], " ")
+//	func WindowsRunMeElevated() {
+//		verb := "runas"
+//		exe, _ := os.Executable()
+//		cwd, _ := os.Getwd()
+//		args := strings.Join(os.Args[1:], " ")
 //
-//	verbPtr, _ := syscall.UTF16PtrFromString(verb)
-//	exePtr, _ := syscall.UTF16PtrFromString(exe)
-//	cwdPtr, _ := syscall.UTF16PtrFromString(cwd)
-//	argPtr, _ := syscall.UTF16PtrFromString(args)
+//		verbPtr, _ := syscall.UTF16PtrFromString(verb)
+//		exePtr, _ := syscall.UTF16PtrFromString(exe)
+//		cwdPtr, _ := syscall.UTF16PtrFromString(cwd)
+//		argPtr, _ := syscall.UTF16PtrFromString(args)
 //
-//	var showCmd int32 = 1 //SW_NORMAL
+//		var showCmd int32 = 1 //SW_NORMAL
 //
-//	err := windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
-//	if err != nil {
-//		fmt.Println(err)
+//		err := windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
+//		if err != nil {
+//			fmt.Println(err)
+//		}
 //	}
-//}
 var (
 	GOOS       = runtime.GOARCH
 	AppName    string
@@ -88,7 +89,7 @@ var (
 	Ipv4Regex  = `([0-9]+\.){3}[0-9]+`
 )
 
-////progressbar
+// //progressbar
 const DEFAULT_FORMAT = "\r%s   %3d %%  %d kb %0.2f kb/s %v      "
 
 type ProgressBar struct {
@@ -203,7 +204,7 @@ func FileWaitContentsAndRead(path string, timeoutms int) (string, error) {
 	return "", fmt.Errorf("file is empty: %s", path)
 }
 
-//pathfile, tocontents, grepstring, pattern string, literalGrepFlag bool, linesinserts ...int
+// pathfile, tocontents, grepstring, pattern string, literalGrepFlag bool, linesinserts ...int
 func FileUpdateOrAdd(pathfile, tocontents, grepstring, pattern string, literalGrepFlag bool, linesinserts ...int) (err error) {
 	linesinsert := 1
 	if len(linesinserts) != 0 && linesinserts[0] != 0 {
@@ -230,7 +231,7 @@ func FileUpdateOrAdd(pathfile, tocontents, grepstring, pattern string, literalGr
 	return nil
 }
 
-//pathfile, tocontents, grepstring, pattern string, literalGrepFlag bool, linesinserts ...int
+// pathfile, tocontents, grepstring, pattern string, literalGrepFlag bool, linesinserts ...int
 func FileCreatenewIfDiff(pathfile, tocontents, grepstring string, literalGrepFlag bool) (err error) {
 	if PathIsFile(pathfile) {
 		if gogrep.FileIsMatchLines(pathfile, grepstring, literalGrepFlag) {
@@ -443,7 +444,7 @@ func Cat(files ...string) (err error) {
 	return nil
 }
 
-//get arg at index 'index' of args
+// get arg at index 'index' of args
 func ArgsGet(index int, args []string) string {
 	if len(args) > index {
 		return args[index]
@@ -452,7 +453,7 @@ func ArgsGet(index int, args []string) string {
 	}
 }
 
-//func _IDget(listdir) (file, id string)
+// func _IDget(listdir) (file, id string)
 func IDGenerate() string {
 	return xid.New().String()
 }
@@ -572,8 +573,90 @@ func TempFileCreateWithContent(data []byte) string {
 	}
 }
 
+// GetCurrentContainerID attempts to extract the current container ID from the provided file paths.
+// If no files paths are provided, it will default to /proc/1/cpuset, /proc/self/cgroup and /proc/self/mountinfo.
+// It attempts to match the HOSTNAME first then use the fallback method, and returns with the first valid match.
+func GetCurrentContainerID(filepaths ...string) (id string) {
+	if len(filepaths) == 0 {
+		filepaths = []string{"/proc/1/cpuset", "/proc/self/cgroup", "/proc/self/mountinfo"}
+	}
+
+	// We try to match a 64 character hex string starting with the hostname first
+	for _, filepath := range filepaths {
+		file, err := os.Open(filepath)
+		if err != nil {
+			continue
+		}
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		scanner.Split(bufio.ScanLines)
+		for scanner.Scan() {
+			_, lines, err := bufio.ScanLines([]byte(scanner.Text()), true)
+			if err == nil {
+				strLines := string(lines)
+				if id = matchContainerIDWithHostname(strLines); len(id) == 64 {
+					return
+				}
+			}
+		}
+	}
+
+	// If we didn't get any ID that matches the hostname, fall back to matching the first 64 character hex string
+	for _, filepath := range filepaths {
+		file, err := os.Open(filepath)
+		if err != nil {
+			continue
+		}
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		scanner.Split(bufio.ScanLines)
+		for scanner.Scan() {
+			_, lines, err := bufio.ScanLines([]byte(scanner.Text()), true)
+			if err == nil {
+				strLines := string(lines)
+				if id = matchContainerID("([[:alnum:]]{64})", strLines); len(id) == 64 {
+					return
+				}
+			}
+		}
+	}
+
+	return
+}
+
+func matchContainerIDWithHostname(lines string) string {
+	hostname := os.Getenv("HOSTNAME")
+	re := regexp.MustCompilePOSIX("^[[:alnum:]]{12}$")
+
+	if re.MatchString(hostname) {
+		regex := fmt.Sprintf("(%s[[:alnum:]]{52})", hostname)
+
+		return matchContainerID(regex, lines)
+	}
+	return ""
+}
+
+func matchContainerID(regex, lines string) string {
+	// Attempt to detect if we're on a line from a /proc/<pid>/mountinfo file and modify the regexp accordingly
+	// https://www.kernel.org/doc/Documentation/filesystems/proc.txt section 3.5
+	re := regexp.MustCompilePOSIX("^[0-9]+ [0-9]+ [0-9]+:[0-9]+ /")
+	if re.MatchString(lines) {
+		regex = fmt.Sprintf("containers/%v", regex)
+	}
+
+	re = regexp.MustCompilePOSIX(regex)
+	if re.MatchString(lines) {
+		submatches := re.FindStringSubmatch(string(lines))
+		containerID := submatches[1]
+
+		return containerID
+	}
+	return ""
+}
+
 func IsContainer() bool {
-	return gogrep.FileIsMatchLiteralLine("/proc/self/cgroup", "docker") || gogrep.FileIsMatchLiteralLine("/proc/self/cgroup", "lxc")
+	return len(GetCurrentContainerID()) != 0
+	// return gogrep.FileIsMatchLiteralLine("/proc/self/cgroup", "docker") || gogrep.FileIsMatchLiteralLine("/proc/self/cgroup", "lxc")
 }
 
 func CreateSha1(data []byte) string {
@@ -1071,6 +1154,14 @@ func JsonStringFindElementsSlide(strjson *string, pathSearch string) ([]string, 
 		//		retmap[strconv.Itoa(id)] = v.InnerText()
 	}
 	return retslide, nil
+}
+
+func JsonParser(str string) gjson.Result {
+	return gjson.Parse(str)
+}
+
+func JsonParserBytes(bs []byte) gjson.Result {
+	return gjson.ParseBytes(bs)
 }
 
 func JsonStringFindElement(strjson *string, pathSearch string) (string, error) {
@@ -1600,6 +1691,16 @@ func SlideHasSubstringInStrings(s []string, b string) bool {
 	for i := 0; i < len(s); i++ {
 		//		fmt.Println(s[i], b)
 		if StringContainsI(b, s[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func SlideHasElementInStrings(s []string, b string) bool {
+	for i := 0; i < len(s); i++ {
+		//		fmt.Println(s[i], b)
+		if b == s[i] {
 			return true
 		}
 	}
