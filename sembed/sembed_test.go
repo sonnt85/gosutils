@@ -61,9 +61,12 @@ func TestCopy(t *testing.T) {
 func TestFind(t *testing.T) {
 	// fs, err := NewHttpSystemFS(&efs, "statictest")
 
-	fs, err := NewHttpSystemFS(&efs)
+	fs, err := NewHttpSystemFS(&efs, "statictest")
+	fs.SetRootDir("statictest")
 	require.Nil(t, err)
 
 	// fs, err := NewHttpSystemFS(&efs)
-	fmt.Println(fs.FindFilesMatchRegexpPathFromRoot("statictest/dir1", "hello1.*", -1, true, true))
+	fmt.Println(fs.FindFilesMatchRegexpPathFromRoot(".", "hello.*", 1, true, true))
+	// fmt.Println(fs.FindFilesMatchRegexpPathFromRoot("statictest/dir1", "hello1.*", -1, true, true))
+
 }

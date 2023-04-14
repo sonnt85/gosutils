@@ -17,13 +17,14 @@ import (
 )
 
 // http.File
-// type File interface {
-// 	io.Closer x
-// 	io.Reader x
-// 	io.Seeker x
-// 	Readdir(count int) ([]fs.FileInfo, error) x
-// 	Stat() (fs.FileInfo, error)
-// }
+//
+//	type File interface {
+//		io.Closer x
+//		io.Reader x
+//		io.Seeker x
+//		Readdir(count int) ([]fs.FileInfo, error) x
+//		Stat() (fs.FileInfo, error)
+//	}
 type File struct {
 	reader *bytes.Reader
 	FileReadDir
@@ -132,16 +133,26 @@ func (esub *embedSub) Open(name string) (fs.File, error) { //implement FS
 type HttpSystemFS struct {
 	// fs.SubFS
 	// fs.StatFS
+	rootDir string
 	*embedSub
 }
 
-func NewHttpSystemFS(efs *embed.FS, sub ...string) (*HttpSystemFS, error) {
-	hfs := HttpSystemFS{NewEmbedSub()}
+func NewHttpSystemFS(efs *embed.FS, rootDir string, sub ...string) (*HttpSystemFS, error) {
+	hfs := HttpSystemFS{embedSub: NewEmbedSub()}
 	hfs.embedWrap.efs = efs
+	hfs.rootDir = rootDir
 	if len(sub) != 0 {
 		return hfs.Sub(sub[0])
 	}
 	return &hfs, nil
+}
+
+func (fsh *HttpSystemFS) RootDir() string {
+	return fsh.rootDir
+}
+
+func (fsh *HttpSystemFS) SetRootDir(rd string) {
+	fsh.rootDir = rd
 }
 
 func (fsh *HttpSystemFS) Open(name string) (hf http.File, err error) {
@@ -191,6 +202,9 @@ func (fsh *HttpSystemFS) FindFilesMatchPathFromRoot(rootSearch, pattern string, 
 	matches = make([]string, 0)
 	if matchFunc == nil {
 		return
+	}
+	if len(rootSearch) == 0 || rootSearch == "/" || rootSearch == "." {
+		rootSearch = fsh.rootDir
 	}
 	// rootSearch := gofilepath.FromSlash(root1)
 	if finfo, err := fsh.Stat(rootSearch); err == nil {
@@ -309,7 +323,7 @@ func (fsh *HttpSystemFS) FindFilesMatchName(root, pattern string, maxdeep int, m
 //   - If a directory read fails, the function is called a second time
 //     for that directory to report the error.
 //
-//type WalkDirFunc func(path string, d DirEntry, err error) error
+// type WalkDirFunc func(path string, d DirEntry, err error) error
 type WalkDirFunc fs.WalkDirFunc
 
 // type WalkDirFunc func(path string, d DirEntry, err error) error
@@ -335,6 +349,9 @@ func (d *statDirEntry) Type() fs.FileMode          { return d.info.Mode().Type()
 func (d *statDirEntry) Info() (fs.FileInfo, error) { return d.info, nil }
 
 func (fsh *HttpSystemFS) Stat(root string) (finfo fs.FileInfo, err error) {
+	if len(root) == 0 || root == "/" || root == "." {
+		root = fsh.rootDir
+	}
 	file, err := fsh.embedSub.Open(root)
 	if err != nil {
 		return nil, err
@@ -386,7 +403,7 @@ func (fsh *HttpSystemFS) walkDir(pathdir string, d fs.DirEntry, walkDirFn WalkDi
 	return nil
 }
 
-//copy file or directory from fsh  to fs dirName
+// copy file or directory from fsh  to fs dirName
 func (fsh *HttpSystemFS) Copy(toDirPath, fromFshPath string) (err error) {
 	// defer func() {
 	// 	if err != nil {
