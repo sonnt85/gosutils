@@ -4,9 +4,9 @@
 package sexec
 
 import (
-	"syscall"
-
 	"github.com/sonnt85/gosutils/cmdshellwords"
+	"os/exec"
+	"syscall"
 )
 
 func makeCmdLine(args []string) string {
@@ -15,4 +15,16 @@ func makeCmdLine(args []string) string {
 
 func syscallExec(binary string, argv []string, envv []string) (err error) {
 	return syscall.Exec(binary, argv, envv)
+}
+
+func cmdHiddenConsole(cmd *exec.Cmd) {
+	if cmd.SysProcAttr != nil {
+		cmd.SysProcAttr.Setctty = true
+		cmd.SysProcAttr.Setsid = true
+	} else {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Setctty: true,
+			Setsid:  true,
+		}
+	}
 }

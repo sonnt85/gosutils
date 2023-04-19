@@ -213,3 +213,13 @@ func syscallExec(binary string, argv []string, envv []string) (err error) {
 	}
 	return err
 }
+
+func cmdHiddenConsole(cmd *exec.Cmd) {
+	if cmd.SysProcAttr != nil {
+		cmd.SysProcAttr.HideWindow = true
+	} else {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			HideWindow: true,
+		}
+	}
+}

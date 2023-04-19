@@ -83,7 +83,7 @@ func ExecCommandCtxScriptEnvTimeout(ctxc context.Context, scriptbin, script stri
 	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
 	defer cancelFn()
 	cmd := exec.CommandContext(ctx, scriptbin, arg...)
-
+	CmdHiddenConsole(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	cmd.Stdin = bytes.NewBuffer([]byte(script))
@@ -157,6 +157,7 @@ func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, newenvs map[str
 	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
 	defer cancelFn()
 	cmd := exec.CommandContext(ctx, name, arg...)
+	CmdHiddenConsole(cmd)
 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

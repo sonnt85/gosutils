@@ -135,3 +135,7 @@ func ExecCommandShellElevatedEnvTimeout(exe string, showCmd int32, moreenvs map[
 func MakeCmdLine(args ...string) string {
 	return makeCmdLine(args)
 }
+
+func CmdHiddenConsole(cmd *exec.Cmd) {
+	cmdHiddenConsole(cmd)
+}
