@@ -30,7 +30,6 @@ import (
 	"github.com/sonnt85/gosutils/sreflect"
 	"github.com/sonnt85/gosutils/sregexp"
 	"github.com/sonnt85/gosutils/sutils"
-
 	"github.com/sonnt85/gosystem"
 	"golang.org/x/crypto/ssh"
 )
@@ -129,6 +128,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 		cmd.Env = append(cmd.Env, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
 		if runtime.GOOS != "windows" {
 			cmd.Env = append(cmd.Env, TERM+"="+ptyReq.Term) //TODO, lelect terminal
+			sexec.CmdHiddenConsole(cmd)
 		} else {
 			cmd.Env = append(cmd.Env, TERM+"="+shellbin)
 		}
@@ -403,7 +403,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 		slogrus.Infof("exec start: %v", commands)
 		cmd = exec.Command(commands[0], commands[1:]...)
 		cmd.Env = append(cmd.Env, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
-
+		sexec.CmdHiddenConsole(cmd)
 		cmd.Dir = pwd
 
 		if debugEnable {
@@ -456,7 +456,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 		}
 
 		if err != nil {
-			slogrus.Errorf("Can not start command: %v", err)
+			slogrus.ErrorfS("Can not start command: %v", err)
 			exitStatus = 2
 			return
 		}
@@ -464,13 +464,13 @@ func sshSessionShellExecHandle(s gossh.Session) {
 
 	err = cmd.Wait()
 	if isPty {
-		slogrus.Infof("Done shell secssion %v -> %v", s.Command(), commands)
+		slogrus.InfofS("Done shell secssion %v -> %v", s.Command(), commands)
 	} else {
-		slogrus.Infof("Done exec command %v -> %v", s.Command(), commands)
+		slogrus.InfofS("Done exec command %v -> %v", s.Command(), commands)
 	}
 
 	if err != nil {
-		slogrus.Errorf("Command return err: %v", err)
+		slogrus.ErrorfS("Command return err: %v", err)
 		exitStatus = getExitCode(err)
 	}
 }
@@ -487,7 +487,7 @@ func getExitCode(err error) (exitCode int) {
 			// in this situation, exit code could not be get, and stderr will be
 			// empty string very likely, so we use the default fail code, and format err
 			// to string and set to stderr
-			slogrus.Printf("Could not get exit code for failed program: use default %d", defaultFailedCode)
+			slogrus.PrintfS("Could not get exit code for failed program: use default %d", defaultFailedCode)
 			exitCode = defaultFailedCode
 			//			if stderr == "" {
 			//				stderr = err.Error()
@@ -526,14 +526,14 @@ func getAuthorizedKeysMap(pupkeys string) map[string]bool {
 func PasswordHandler(c gossh.Context, pass string) bool {
 	if SSHServer.User != "" {
 		if c.User() != SSHServer.User {
-			slogrus.Printf("User %s is not match\n", c.User())
+			slogrus.PrintfS("User %s is not match\n", c.User())
 			return false
 		}
 	}
 
 	if SSHServer.Password != "" {
 		if string(pass) != SSHServer.Password {
-			slogrus.Printf("Password %s is not match", pass)
+			slogrus.PrintfS("Password %s is not match", pass)
 			return false
 		}
 	}
@@ -576,7 +576,7 @@ func CreateKeyPairBytes() (publicKey, privateKey []byte) {
 }
 
 func DefaultChannelHandlers(srv *gossh.Server, conn *ssh.ServerConn, newChan ssh.NewChannel, ctx gossh.Context) {
-	slogrus.Info("Default channel handlers ")
+	slogrus.InfoS("Default channel handlers ")
 
 	//	_, _, err := newChan.Accept()
 	//	if err != nil {
@@ -592,10 +592,10 @@ func DefaultChannelHandlers(srv *gossh.Server, conn *ssh.ServerConn, newChan ssh
 }
 
 func DefaultRequestHandlers(ctx gossh.Context, srv *gossh.Server, req *ssh.Request) (bool, []byte) {
-	slogrus.Info("Default request handlers ", req.Type)
+	slogrus.InfoS("Default request handlers ", req.Type)
 
 	if req.Type == "keepalive@openssh.com" {
-		slogrus.Info("Client send keepalive@openssh.com")
+		slogrus.InfoS("Client send keepalive@openssh.com")
 		return true, nil
 	}
 	return false, []byte{}
@@ -613,7 +613,7 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 	} else {
 		server.IdleTimeout = timeout >> 1
 	}
-	//	slogrus.Printf("===============>server: %+v", server)
+	//	slogrus.PrintfS("===============>server: %+v", server)
 	//	&Server{AddresListen: addr, User: User, Password: keypass}
 	if addr == "" {
 		addr = ":4444"
@@ -629,8 +629,8 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 	server.PasswordHandler = PasswordHandler
 	//	server.HostSigners = [](gossh.Signer)(gossh.NewSignerFromKey(""))
 	server.ConnCallback = func(ctx gossh.Context, conn net.Conn) net.Conn {
-		slogrus.Printf("New ssh connection from %s\n", conn.RemoteAddr().String())
-		//				slogrus.Printf("New ssh connection! %v\n", ctx)
+		slogrus.PrintfS("New ssh connection from %s\n", conn.RemoteAddr().String())
+		//				slogrus.PrintfS("New ssh connection! %v\n", ctx)
 		return conn
 	}
 	if len(Pubkeys) > 50 {
@@ -638,16 +638,16 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 	}
 
 	server.ConnectionFailedCallback = gossh.ConnectionFailedCallback(func(conn net.Conn, err error) {
-		slogrus.Print("ConnectionFailedCallback ", err)
+		slogrus.PrintS("ConnectionFailedCallback ", err)
 	})
 
 	server.LocalPortForwardingCallback = gossh.LocalPortForwardingCallback(func(ctx gossh.Context, dhost string, dport uint32) bool {
-		slogrus.Print("[ssh -L] Accepted forward", dhost, dport)
+		slogrus.PrintS("[ssh -L] Accepted forward", dhost, dport)
 		return true
 	})
 
 	server.ReversePortForwardingCallback = gossh.ReversePortForwardingCallback(func(ctx gossh.Context, host string, port uint32) bool {
-		slogrus.Print("[ssh -R] attempt to bind", host, port, "granted")
+		slogrus.PrintS("[ssh -R] attempt to bind", host, port, "granted")
 		return true
 	})
 	server.ChannelHandlers = map[string]gossh.ChannelHandler{
