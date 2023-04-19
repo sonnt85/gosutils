@@ -51,13 +51,26 @@ func EncrypBytesToString(data []byte, passphrase []byte) (retbstring string, err
 	return base64.RawStdEncoding.EncodeToString(ciphertext), nil
 }
 
-// enctyp file filename to byte array use hash
-func EncryptBytesToFile(filename string, data []byte, passphrase []byte) (err error) {
-	f, err := os.Create(filename)
-	if err != nil {
-		return err
+// enctyp file filename (string or *os.File) to byte array use hash
+func EncryptBytesToFile(filename interface{}, data []byte, passphrase []byte) (err error) {
+	var f io.Writer
+	// *os.File
+	switch v := filename.(type) {
+	case io.Writer:
+		f = v
+		// f.Truncate(0)
+	case string:
+		var file *os.File
+		file, err = os.Create(v)
+		if err != nil {
+			return err
+		}
+		f = io.Writer(file)
+		defer file.Close()
+	default:
+		return errors.New("param is of unknown type")
 	}
-	defer f.Close()
+
 	byteread, err := EncrypBytes(data, passphrase)
 	if err != nil {
 		return err
@@ -105,11 +118,21 @@ func DecryptBytesFromString(datastr string, passphrase []byte) (retbytes []byte,
 	return DecryptBytes(data, passphrase)
 }
 
-// decryp file filename to byte array use hash
-func DecryptFileToBytes(filename string, passphrase []byte) (retbytes []byte, err error) {
-	data, err := ioutil.ReadFile(filename)
+// decryp file filename (String) or io.Reader to byte array use hash
+func DecryptFileToBytes(filename interface{}, passphrase []byte) (data []byte, err error) {
+	// *os.File
+	switch v := filename.(type) {
+	case io.Reader:
+		data, err = io.ReadAll(v)
+		// f.Truncate(0)
+	case string:
+		data, err = ioutil.ReadFile(v)
+	default:
+		return data, errors.New("param is of unknown type")
+	}
+
 	if err != nil {
-		return retbytes, err
+		return data, err
 	}
 	return DecryptBytes(data, passphrase)
 }

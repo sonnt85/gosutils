@@ -187,5 +187,9 @@ func Pkcs7Unpadding(input []byte) []byte {
 		return []byte{}
 	}
 	padding := input[len(input)-1]
-	return input[:len(input)-int(padding)]
+	if (len(input) - int(padding)) >= 0 {
+		return input[:len(input)-int(padding)]
+	} else {
+		return []byte{}
+	}
 }
