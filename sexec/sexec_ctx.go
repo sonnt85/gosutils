@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/shirou/gopsutil/process"
@@ -18,33 +19,10 @@ import (
 
 func ExecCommandCtxShellEnvTimeout(ctx context.Context, script string, moreenvs map[string]string, timeout time.Duration, scriptrunoption ...string) (stdOut, stdErr []byte, err error) {
 	shellbin := ""
-	// shellrunoption := []string{}
-
 	if runtime.GOOS == "windows" {
 		if shellbin = os.Getenv("COMSPEC"); shellbin == "" {
 			shellbin = "cmd"
 		}
-		// if len(scriptrunoption) == 0 {
-		// 	scriptrunoption = []string{"/c", "-"}
-		// } else {
-		// 	scriptrunoption = append([]string{"/c", "-"}, scriptrunoption...)
-		// }
-		// lines := sutils.String2lines(script)
-		// if len(lines) > 1 {
-		// 	// exepath := shellwords.Join(command)
-		// 	batfile := gofilepath.TempFileCreateWithContent([]byte(script), "scriptbytes.bat")
-		// 	if len(batfile) != 0 {
-		// 		defer os.RemoveAll(filepath.Dir(batfile))
-		// 	} else {
-		// 		return nil, nil, errors.New("can not create tmp file")
-		// 	}
-		// 	shellrunoption = []string{"/c", batfile}
-		// } else {
-		// 	if len(script) != 0 {
-		// 		shellrunoption = []string{"/c", script}
-		// 	}
-		// }
-
 	} else { //linux
 		// shellrunoption = []string{"-c", "--", script}
 		shellbin = os.Getenv("SHELL")
@@ -58,7 +36,6 @@ func ExecCommandCtxShellEnvTimeout(ctx context.Context, script string, moreenvs 
 	if len(shellbin) == 0 {
 		return nil, nil, errors.New("missing binary shell")
 	}
-	// arg = append(shellrunoption, arg...)
 	return ExecCommandCtxScriptEnvTimeout(ctx, shellbin, script, moreenvs, timeout, scriptrunoption...)
 }
 
@@ -86,13 +63,11 @@ func ExecCommandCtxScriptEnvTimeout(ctxc context.Context, scriptbin, script stri
 	CmdHiddenConsole(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	cmd.Stdin = bytes.NewBuffer([]byte(script))
-	if len(moreenvs) != 0 {
-		// cmd.Env = os.Environ()
-		for k, v := range moreenvs {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-		}
+	if !strings.HasSuffix(script, "\n") {
+		script += "\n"
 	}
+	cmd.Stdin = bytes.NewBuffer([]byte(script))
+	cmd.Env = EnrovimentMergeWithCurrentEnv(moreenvs)
 	err = cmd.Start()
 	if err != nil {
 		return stdOut, stdErr, err
@@ -146,7 +121,7 @@ func ExecCommandCtxShell(ctx context.Context, script string, timeout time.Durati
 	return ExecCommandCtxShellEnvTimeout(ctx, script, map[string]string{}, timeout)
 }
 
-func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, newenvs map[string]string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
+func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, moreenvs map[string]string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
 	var stdout, stderr bytes.Buffer
 	// var cmd *exec.Cmd
 	// var ctx context.Context
@@ -161,12 +136,7 @@ func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, newenvs map[str
 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if len(newenvs) != 0 {
-		// cmd.Env = os.Environ()
-		for k, v := range newenvs {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
+	cmd.Env = EnrovimentMergeWithCurrentEnv(moreenvs)
 	err = cmd.Start()
 
 	if err != nil {
@@ -228,7 +198,7 @@ func ExecCommandCtxEnv(ctx context.Context, name string, moreenvs map[string]str
 }
 
 // spaw father to  child via syscall, merge executablePath to executableArgs if first executableArgs[0] is diffirence executablePath
-func ExecCommandCtxSyscall(ctx context.Context, executablePath string, executableArgs []string, executableEnvs map[string]string) error {
+func ExecCommandCtxSyscall(ctx context.Context, executablePath string, executableArgs []string, moreEnvs map[string]string) error {
 	//  var result string
 	if len(executableArgs) == 0 {
 		executableArgs = make([]string, 0)
@@ -243,16 +213,8 @@ func ExecCommandCtxSyscall(ctx context.Context, executablePath string, executabl
 		executablePath, _ = filepath.Abs(executablePath)
 	}
 	//need config executableEnv if not its empty
-	executableEnv := []string{}
-	// executableEnv := os.Environ() //[]string{}
-	if len(executableEnvs) != 0 {
-		for k, v := range executableEnvs {
-			executableEnv = append(executableEnv, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
-	//  else {
-	// 	executableEnv = os.Environ()
-	// }
+	// executableEnv := []string{}
+	executableEnv := EnrovimentMergeWithCurrentEnv(moreEnvs)
 	var binary string
 	var err error
 	binary, err = exec.LookPath(executablePath)

@@ -2,7 +2,7 @@ package sexec
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"os/exec"
 	"testing"
 	"time"
@@ -15,7 +15,8 @@ func TestExecBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := ioutil.ReadFile(path)
+	//lint:ignore SA4006 ignore this!
+	b, err := os.ReadFile(path)
 	b = []byte(`#!/bin/bash
 `)
 	if err != nil {

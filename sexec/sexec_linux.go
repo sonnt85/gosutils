@@ -58,7 +58,7 @@ func execCommandShellElevatedEnvTimeout1(name string, showCmd int32, moreenvs ma
 	// return ExecCommand(exe, args...)
 }
 
-func execCommandShellElevatedEnvTimeout(ctx context.Context, name string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
+func execCommandShellElevatedEnvTimeout(ctxc context.Context, name string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
 	var stdout, stderr bytes.Buffer
 	if len(name) == 0 {
 		name, err = os.Executable()
@@ -66,8 +66,16 @@ func execCommandShellElevatedEnvTimeout(ctx context.Context, name string, showCm
 			return
 		}
 	}
+	if timeout == 0 || timeout == -1 {
+		timeout = 1<<63 - 1
+	}
 	args = append([]string{"-S", name}, args...)
-	cmd := exec.CommandContext(ctx, "sudo", args...)
+	if ctxc == nil {
+		ctxc = context.Background()
+		// windows.ShellExecuteEx()
+		// err = windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
+	}
+	cmd := exec.CommandContext(ctxc, "sudo", args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 	// cmd.SysProcAttr.Credential = &syscall.Credential{Uid: 0, Gid: 0} //error
 	if len(moreenvs) != 0 {

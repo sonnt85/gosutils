@@ -26,6 +26,7 @@ func makeCmdLine(args []string) string {
 	return s
 }
 
+//lint:ignore U1000 ignore this!
 func execCommandShellElevatedEnvTimeout_(ctxc context.Context, exe string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
 	var stdout, stderr bytes.Buffer
 	if timeout == 0 || timeout == -1 {
@@ -48,12 +49,7 @@ func execCommandShellElevatedEnvTimeout_(ctxc context.Context, exe string, showC
 		// Token:      getAdminToken(),
 		HideWindow: hidewindow,
 	}
-	if len(moreenvs) != 0 {
-		// cmd.Env = os.Environ()
-		for k, v := range moreenvs {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
+	cmd.Env = EnrovimentMergeCurrentEnv(moreenvs)
 	err = cmd.Start()
 	if err != nil {
 		return stdOut, stdErr, err
@@ -105,7 +101,8 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, exe string, showCm
 	// err = elevate.ShellExecute(exe, makeCmdLine(args), "", showCmd)
 	// return
 	verb := "runas"
-	if timeout == 0 || timeout == -1 {
+	// if timeout == 0 || timeout == -1 {
+	if timeout == -1 {
 		timeout = 1<<63 - 1
 	}
 	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
@@ -147,13 +144,14 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, exe string, showCm
 		}()
 	}
 	// err = windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(ctx, timeout)
+	// defer cancel()
 
 	errc := make(chan error, 1)
 
 	// needKill := false
 	if ctxc == nil {
+		// ctxc, _ = context.WithTimeout(context.Background(), 0)
 		ctxc = context.Background()
 		// windows.ShellExecuteEx()
 		// err = windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
@@ -175,14 +173,19 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, exe string, showCm
 	return nil, nil, err
 }
 
-func toEnvBlock(env []string) *uint16 {
+func toEnvBlock(env []string) (s16s *uint16, err error) {
 	block := make([]uint16, 0)
+	var u16tmp []uint16
 	for _, e := range env {
-		block = append(block, syscall.StringToUTF16(e)...)
+		u16tmp, err = syscall.UTF16FromString(e)
+		if err != nil {
+			return
+		}
+		block = append(block, u16tmp...)
 		block = append(block, 0)
 	}
 	block = append(block, 0)
-	return &block[0]
+	return &block[0], nil
 }
 
 // func toCmdLine(executable string, args []string) *uint16 {
@@ -196,10 +199,17 @@ func toEnvBlock(env []string) *uint16 {
 // }
 
 func syscallExec(binary string, argv []string, envv []string) (err error) {
-	cmdLine := syscall.StringToUTF16Ptr(makeCmdLine(append([]string{binary}, argv...)))
+	// cmdLine := syscall.StringToUTF16Ptr(makeCmdLine(append([]string{binary}, argv...)))
+	// var cmdline *uint16
+	cmdLine, err := syscall.UTF16PtrFromString(makeCmdLine(append([]string{binary}, argv...)))
+	if err != nil {
+		return err
+	}
 	// cmdLine := toCmdLine(binary, argv)
-
-	envBlock := toEnvBlock(envv)
+	var envBlock *uint16
+	if envBlock, err = toEnvBlock(envv); err != nil {
+		return
+	}
 
 	startupInfo := &syscall.StartupInfo{}
 	processInfo := &syscall.ProcessInformation{}
