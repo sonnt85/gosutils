@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	// "github.com/sonnt85/errors"
+	"github.com/sonnt85/gosutils/lockedfile/internal/filelock"
+
 	"github.com/sonnt85/gosutils/endec"
 )
 
@@ -62,11 +65,13 @@ func (mu *Mutex) Lock() (f *File, unlock func(), err error) {
 	// assumptions about Mutex working with write-only files.
 	f, err = OpenFile(mu.Path, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
+		mu.mu.Unlock()
 		return f, nil, err
 	}
 
 	return f, func() {
 		f.Close()
+		filelock.Unlock(f)
 		mu.mu.Unlock()
 	}, nil
 }
@@ -86,11 +91,13 @@ func (mu *Mutex) TryLock() (f *File, unlock func(), err error) {
 	// assumptions about Mutex working with write-only files.vd
 	f, err = OpenFile(mu.Path, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
+		mu.mu.Unlock()
 		return f, nil, err
 	}
 
 	return f, func() {
 		f.Close()
+		filelock.Unlock(f)
 		mu.mu.Unlock()
 	}, nil
 }
@@ -103,11 +110,13 @@ func (mu *Mutex) RLock() (f *File, unlock func(), err error) {
 
 	f, err = OpenFile(mu.Path, os.O_RDONLY, 0666)
 	if err != nil {
+		mu.mu.Unlock()
 		return f, nil, err
 	}
 
 	return f, func() {
 		f.Close()
+		filelock.Unlock(f)
 		mu.mu.RUnlock()
 	}, nil
 }
@@ -124,12 +133,14 @@ func (mu *Mutex) TryRLock() (f *File, unlock func(), err error) {
 
 	f, err = OpenFile(mu.Path, os.O_RDONLY, 0666)
 	if err != nil {
+		mu.mu.Unlock()
 		return f, nil, err
 	}
 
 	return f, func() {
-		mu.mu.RUnlock()
 		f.Close()
+		filelock.Unlock(f)
+		mu.mu.RUnlock()
 	}, nil
 }
 
@@ -174,7 +185,8 @@ func (mu *Mutex) LockTimeout(timeout time.Duration, intervalCheck ...time.Durati
 		f, unlock, err = mu.TryLock()
 		if err != nil {
 			if timeoutns != 0 && time.Now().After(timeoutAt) {
-				err = fmt.Errorf("Timeout")
+				err = errors.Join(err, errors.New("Timeout "+timeout.String()))
+				// err = fmt.Errorf("Timeout %s", timeout.String())
 				return
 			} else {
 				runtime.Gosched()

@@ -2,11 +2,13 @@ package bufcopy
 
 import (
 	"io"
-	"sync"
+	"time"
+
+	"github.com/sonnt85/goramcache"
 )
 
 type BufCopy struct {
-	*sync.Pool
+	*goramcache.Pool[*[]byte]
 }
 
 func New(default_size ...int) *BufCopy {
@@ -14,13 +16,11 @@ func New(default_size ...int) *BufCopy {
 	if len(default_size) != 0 {
 		size = default_size[0]
 	}
-	p := &BufCopy{&sync.Pool{
-		New: func() interface{} {
-			nb := make([]byte, size)
-			return &nb
-		},
-	}}
-	return p
+	p := goramcache.NewPool(1024*10, time.Minute, func() *[]byte {
+		nb := make([]byte, size)
+		return &nb
+	})
+	return &BufCopy{p}
 }
 
 func (b *BufCopy) Copy(dst io.Writer, src io.Reader) (written int64, err error) {
@@ -34,7 +34,7 @@ func (b *BufCopy) Copy(dst io.Writer, src io.Reader) (written int64, err error) 
 		return rt.ReadFrom(src)
 	}
 
-	buf := b.Get().(*[]byte)
+	buf := b.Get()
 	defer b.Put(buf)
 	var nr, nw int
 	var er, ew error

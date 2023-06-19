@@ -175,6 +175,9 @@ func AESCBCDecryptFromBase64(key []byte, ciphertext string, ivs ...[]byte) ([]by
 
 func Pkcs7Padding(input []byte, blockSize int) []byte {
 	paddingSize := blockSize - len(input)%blockSize
+	// if paddingSize == blockSize {
+	// 	return input
+	// }
 	padding := make([]byte, paddingSize)
 	for i := range padding {
 		padding[i] = byte(paddingSize)
@@ -182,14 +185,20 @@ func Pkcs7Padding(input []byte, blockSize int) []byte {
 	return append(input, padding...)
 }
 
-func Pkcs7Unpadding(input []byte) []byte {
+func Pkcs7Unpadding(input []byte, blockSize ...int) []byte {
 	if len(input) == 0 {
 		return []byte{}
 	}
 	padding := input[len(input)-1]
 	if (len(input) - int(padding)) >= 0 {
+		for i := len(input) - int(padding); i < len(input); i++ {
+			if input[i] != padding {
+				// return []byte{}
+				return input
+			}
+		}
 		return input[:len(input)-int(padding)]
 	} else {
-		return []byte{}
+		return input
 	}
 }

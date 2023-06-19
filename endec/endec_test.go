@@ -1,7 +1,9 @@
 package endec
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,7 +11,7 @@ import (
 
 //	"encoding/base64"
 
-//	"fmt"
+// "fmt"
 func TestEncrypFile(t *testing.T) {
 	var data, datatoencryp []byte
 	var err error
@@ -46,4 +48,17 @@ func TestStringEndec(t *testing.T) {
 	retdata, err = StringSimpleDecrypt(retdata, password)
 	require.Nil(t, err)
 	fmt.Println(retdata)
+}
+
+func TestGzip(t *testing.T) {
+	pwd := []byte("pwd12")
+	os.Remove("datatest/d2/f2.txt.zip")
+	err := GzipFile("datatest/d2/f2.txt.zip", "datatest/d1/f2.txt", false, -1, pwd)
+	require.Nil(t, err)
+	err = GunzipFile("datatest/d2/f2.txt", "datatest/d2/f2.txt.zip", false, pwd)
+	require.Nil(t, err)
+	buf := bytes.NewBuffer([]byte{})
+	err = GzipFile(buf, "datatest/d1/f2.txt", false, -1, pwd)
+	require.Nil(t, err)
+	fmt.Print(buf.String())
 }

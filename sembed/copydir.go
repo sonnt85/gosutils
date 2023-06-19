@@ -148,7 +148,7 @@ func (cr *CopyRecursive) processDir(srcFilePath string, srcFileInfo os.FileInfo)
 	return err
 }
 
-func (cr *CopyRecursive) copyFile(srcPath string, srcFileInfo os.FileInfo) (err error) {
+func (cr *CopyRecursive) copyFile(srcPath string, srcFileInfo os.FileInfo, mods ...fs.FileMode) (err error) {
 	var relpath string
 	relpath, err = gofilepath.Rel(cr.srcPath, srcPath)
 	if err != nil {
@@ -159,7 +159,16 @@ func (cr *CopyRecursive) copyFile(srcPath string, srcFileInfo os.FileInfo) (err 
 	if err != nil {
 		return
 	}
-	cr.Writer(gofilepath.JointSmart(cr.dstPathSeparator, cr.dstPath, relpath), filecontent, srcFileInfo.Mode())
+	dstPath := gofilepath.JointSmart(cr.dstPathSeparator, cr.dstPath, relpath)
+	fmode := srcFileInfo.Mode()
+	if len(mods) != 0 {
+		fmode = mods[0]
+	}
+	err = cr.Writer(dstPath, filecontent, fmode)
+	if err != nil {
+		return
+	}
+
 	return err
 }
 
@@ -182,7 +191,7 @@ func (cr *CopyRecursive) MkdirAll(dstPath string, dstFileInfo fs.FileMode) (err 
 	return
 }
 
-func (cr *CopyRecursive) Copy(dstName, srcName string) (err error) {
+func (cr *CopyRecursive) Copy(dstName, srcName string, mods ...fs.FileMode) (err error) {
 	if dstName == "" {
 		return errors.New("dstName cannot empty")
 	}
@@ -232,7 +241,7 @@ func (cr *CopyRecursive) Copy(dstName, srcName string) (err error) {
 			}
 		}
 	} else {
-		err = cr.copyFile(srcName, srcFileInfo)
+		err = cr.copyFile(srcName, srcFileInfo, mods...)
 		return err
 	}
 	return
@@ -260,7 +269,7 @@ type FileOS struct {
 	*File
 }
 
-//copy file or directory from fsh  to fs dirName
+// copy file or directory from fsh  to fs dirName
 func Copy(toDirPath, fromFshPath string) (err error) {
 	cr := &CopyRecursive{IsVerbose: true,
 		IgnErr:   false,

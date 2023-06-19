@@ -85,68 +85,97 @@ func Fatal(v ...interface{}) {
 	_defaultLogger.Fatal(v...)
 }
 
+var FatalS = Fatal
+
 // Error calls the default logger's Error method.
 func Error(v ...interface{}) {
 	_defaultLogger.Error(v...)
 }
+
+var ErrorS = Error
 
 // Warn calls the default logger's Warn method.
 func Warn(v ...interface{}) {
 	_defaultLogger.Warn(v...)
 }
 
+var WarnS = Warn
+
 func Print(v ...interface{}) {
 	_defaultLogger.Print(v...)
 }
+
+var PrintS = Print
 
 // Info calls the default logger's Info method.
 func Info(v ...interface{}) {
 	_defaultLogger.Info(v...)
 }
 
+var InfoS = Info
+
 // Debug calls the default logger's Debug method.
 func Debug(v ...interface{}) {
 	_defaultLogger.Debug(v...)
 }
+
+var DebugS = Debug
 
 // Trace calls the default logger's Trace method.
 func Trace(v ...interface{}) {
 	_defaultLogger.Trace(v...)
 }
 
+var TraceS = Trace
+
 // Fatalf calls the default logger's Fatalf method and then os.Exit(1).
 func Fatalf(format string, v ...interface{}) {
 	_defaultLogger.Fatalf(format, v...)
 }
+
+var FatalfS = Fatalf
 
 // Errorf calls the default logger's Errorf method.
 func Errorf(format string, v ...interface{}) {
 	_defaultLogger.Errorf(format, v...)
 }
 
+var ErrorfS = Errorf
+
 // Warnf calls the default logger's Warnf method.
 func Warnf(format string, v ...interface{}) {
 	_defaultLogger.Warnf(format, v...)
 }
 
+var WarnfS = Warnf
+
 var Warning = Warnf
+var WarningS = Warning
 
 // Infof calls the default logger's Infof method.
 func Printf(format string, v ...interface{}) {
 	_defaultLogger.Printf(format, v...)
 }
 
+var PrintfS = Printf
+
 // Infof calls the default logger's Infof method.
 func Infof(format string, v ...interface{}) {
 	_defaultLogger.Infof(format, v...)
 }
+
+var InfofS = Infof
 
 // Debugf calls the default logger's Debugf method.
 func Debugf(format string, v ...interface{}) {
 	_defaultLogger.Debugf(format, v...)
 }
 
+var DebugfS = Debugf
+
 // Tracef calls the default logger's Tracef method.
 func Tracef(format string, v ...interface{}) {
 	_defaultLogger.Tracef(format, v...)
 }
+
+var TracefS = Tracef

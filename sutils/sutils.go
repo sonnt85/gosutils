@@ -23,7 +23,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/fs"
-	"io/ioutil"
 
 	xj "github.com/basgys/goxml2json"
 
@@ -192,7 +191,7 @@ func FileWaitContentsAndRead(path string, timeoutms int) (string, error) {
 		timeoutms = 50
 	}
 	for i := 0; i < timeoutms/50; i++ {
-		bytes, err := ioutil.ReadFile(path)
+		bytes, err := os.ReadFile(path)
 		if err != nil {
 			return "", err
 		}
@@ -204,7 +203,13 @@ func FileWaitContentsAndRead(path string, timeoutms int) (string, error) {
 	return "", fmt.Errorf("file is empty: %s", path)
 }
 
-// pathfile, tocontents, grepstring, pattern string, literalGrepFlag bool, linesinserts ...int
+// FileUpdateOrAdd updates or adds content to a file at the specified path.
+// It searches for a specific string using the given grepstring and pattern,
+// and if the string is not found, it replaces it with the provided tocontents.
+// If the file does not exist, a new file is created with the given content.
+// The literalGrepFlag specifies whether the grepstring should be treated as a literal string or a regular expression.
+// The linesinserts parameter specifies the line number where the content should be inserted (default is 1).
+// It returns an error if any error occurs during the file update or addition.
 func FileUpdateOrAdd(pathfile, tocontents, grepstring, pattern string, literalGrepFlag bool, linesinserts ...int) (err error) {
 	linesinsert := 1
 	if len(linesinserts) != 0 && linesinserts[0] != 0 {
@@ -224,7 +229,7 @@ func FileUpdateOrAdd(pathfile, tocontents, grepstring, pattern string, literalGr
 		//not change
 	} else { //create new file if has content
 		if len(tocontents) != 0 {
-			return ioutil.WriteFile(pathfile, []byte(tocontents), os.FileMode(0644))
+			return os.WriteFile(pathfile, []byte(tocontents), os.FileMode(0644))
 		}
 	}
 
@@ -240,7 +245,7 @@ func FileCreatenewIfDiff(pathfile, tocontents, grepstring string, literalGrepFla
 		//not change
 	}
 	//	if len(tocontents) != 0 {
-	return ioutil.WriteFile(pathfile, []byte(tocontents), os.FileMode(0644))
+	return os.WriteFile(pathfile, []byte(tocontents), os.FileMode(0644))
 	//	}
 }
 
@@ -251,20 +256,6 @@ func FileGetSize(filepath string) (int64, error) {
 	}
 	// get the size
 	return fi.Size(), nil
-}
-
-func FileWriteStringIfChange(pathfile string, contents []byte) (bool, error) {
-
-	oldContents := []byte{}
-	if _, err := os.Stat(pathfile); err == nil {
-		oldContents, _ = ioutil.ReadFile(pathfile)
-	}
-
-	if bytes.Compare(oldContents, contents) != 0 {
-		return true, ioutil.WriteFile(pathfile, contents, 0644)
-	} else {
-		return false, nil
-	}
 }
 
 // copy file from src to dst
@@ -344,7 +335,7 @@ func FileInsertStringAtLine(filePath, str string, index int) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(filePath, []byte(lines), info.Mode().Perm())
+	return os.WriteFile(filePath, []byte(lines), info.Mode().Perm())
 }
 
 func DirRemoveContents(dir string) error {
@@ -523,9 +514,12 @@ func PathGetEnvPathKey() string {
 	return ""
 }
 
-func TempFileCreateInNewTemDir(filename string) string {
-
-	rootdir, err := ioutil.TempDir("", "system")
+func TempFileCreateInNewTemDir(filename string, prefix ...string) string {
+	pref := "system"
+	if len(prefix) != 0 {
+		pref = prefix[0]
+	}
+	rootdir, err := os.MkdirTemp("", pref)
 	if err != nil {
 		return ""
 	} else {
@@ -535,8 +529,12 @@ func TempFileCreateInNewTemDir(filename string) string {
 	return filepath.Join(rootdir, filename)
 }
 
-func TempFileCreateInNewTemDirWithContent(filename string, data []byte) string {
-	rootdir, err := ioutil.TempDir("", "system")
+func TempFileCreateInNewTemDirWithContent(filename string, data []byte, prefix ...string) string {
+	pref := "system"
+	if len(prefix) != 0 {
+		pref = prefix[0]
+	}
+	rootdir, err := os.MkdirTemp("", pref)
 	if err != nil {
 		return ""
 	}
@@ -549,8 +547,12 @@ func TempFileCreateInNewTemDirWithContent(filename string, data []byte) string {
 	return fPath
 }
 
-func TempFileCreate() string {
-	if f, err := ioutil.TempFile("", "system"); err == nil {
+func TempFileCreate(prefix ...string) string {
+	pref := "system"
+	if len(prefix) != 0 {
+		pref = prefix[0]
+	}
+	if f, err := os.CreateTemp("", pref); err == nil {
 		defer f.Close()
 		return f.Name()
 	} else {
@@ -558,8 +560,12 @@ func TempFileCreate() string {
 	}
 }
 
-func TempFileCreateWithContent(data []byte) string {
-	if f, err := ioutil.TempFile("", "system"); err == nil {
+func TempFileCreateWithContent(data []byte, prefix ...string) string {
+	pref := "system"
+	if len(prefix) != 0 {
+		pref = prefix[0]
+	}
+	if f, err := os.CreateTemp("", pref); err == nil {
 		var n int
 		if n, err = f.Write(data); err != nil && n == len(data) {
 			f.Close()
@@ -706,13 +712,13 @@ func PathIsExist(path string) bool {
 }
 
 func IoCopy(sourceFile, destinationFile string) bool {
-	input, err := ioutil.ReadFile(sourceFile)
+	input, err := os.ReadFile(sourceFile)
 	if err != nil {
 		log.Println(err)
 		return false
 	}
 
-	err = ioutil.WriteFile(destinationFile, input, 0644)
+	err = os.WriteFile(destinationFile, input, 0644)
 	if err != nil {
 		log.Println("Error creating", destinationFile)
 		log.Println(err)
@@ -956,7 +962,7 @@ func HTTPDownLoadUrl(urlpath, httpmethod, username, password string, insecure_fl
 		// handle err
 		return byterets, err
 	}
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	defer resp.Body.Close()
 	//	defer fmt.Println(urlpath, err)
 	return bodyBytes, nil
@@ -1499,7 +1505,7 @@ func EmailSend(smtphost, usermail, password, from, subject string, to []string, 
 
 		//		defer attachreader.Close()
 		//		io.TeeReader
-		buff, err := ioutil.ReadAll(attachreader)
+		buff, err := io.ReadAll(attachreader)
 
 		if err != nil {
 			return err
@@ -1525,6 +1531,21 @@ func EmailSend(smtphost, usermail, password, from, subject string, to []string, 
 	return err
 }
 
+// TeeReadWriter copies the input from various readers to corresponding writers
+// while simultaneously copying the input to a tee writer. It also handles closing
+// the underlying resources when necessary.
+//
+// Parameters:
+//   - cmd_stdin_pipe: The writer to write the standard input of a command.
+//   - cmd_stdoout_pipe: The reader to read the standard output of a command.
+//   - cmd_stderr_pipe: The reader to read the standard error of a command.
+//   - ptyFile: The read/writer to interact with a pseudo-terminal.
+//   - ptyErr: The writer to write the standard error output from the command to.
+//   - tee: The writer to copy the input to.
+//   - closefunc: The optional function to be called for closing resources.
+//
+// Note: This function assumes that the underlying resources are properly managed
+// and synchronized externally.
 func TeeReadWriter(cmd_stdin_pipe io.Writer, cmd_stdoout_pipe, cmd_stderr_pipe io.Reader, ptyFile io.ReadWriter, ptyErr, tee io.Writer, closefunc func()) {
 	var once sync.Once
 	stdout_pr, stdout_pw := io.Pipe()
@@ -1569,10 +1590,10 @@ func TeeReadWriter(cmd_stdin_pipe io.Writer, cmd_stdoout_pipe, cmd_stderr_pipe i
 			deffunc()
 		}()
 
-		go func() {
-			io.Copy(tee, stdin_pr)
-			deffunc()
-		}()
+		// go func() {
+		// 	io.Copy(tee, stdin_pr)
+		// 	deffunc()
+		// }()
 	} else {
 		go func() {
 			io.Copy(cmd_stdin_pipe, ptyFile)
@@ -1615,7 +1636,6 @@ func TeeReadWriterCmd(cmd *exec.Cmd, ptyFile io.ReadWriter, ptyErr, tee io.Write
 
 func TeeReadWriterOsFile(f *os.File, ptyFile io.ReadWriter, ptyErr, tee io.Writer, closefunc func()) {
 	TeeReadWriter(f, f, f, ptyFile, ptyErr, tee, closefunc)
-	return
 }
 
 func CopyReadWriters(a, b io.ReadWriter, closefunc func()) {
@@ -1698,9 +1718,8 @@ func SlideHasSubstringInStrings(s []string, b string) bool {
 }
 
 func SlideHasElementInStrings(s []string, b string) bool {
-	for i := 0; i < len(s); i++ {
-		//		fmt.Println(s[i], b)
-		if b == s[i] {
+	for _, v := range s {
+		if b == v {
 			return true
 		}
 	}
@@ -1732,6 +1751,12 @@ func TimeNowUTC() string {
 	return fmt.Sprintf("%s %s", tar[0], tar[1])
 }
 
+// TimeTrack measures the elapsed time for the execution of a function
+// and logs the result with the function name.
+// `start` is the starting time from which to measure the duration.
+// Optional `fname` parameter allows to provide a custom function name.
+// If `fname` is not provided, it will extract the name from the caller function.
+// Returns the elapsed time.Duration of the tracked function.
 func TimeTrack(start time.Time, fname ...string) time.Duration {
 	var name string
 	elapsed := time.Since(start)

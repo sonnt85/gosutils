@@ -5,7 +5,6 @@ package sexec
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,7 +14,7 @@ import (
 func open(b []byte, progname string) (f *os.File, err error) {
 	var filePath, workdir string
 	if len(workdir) == 0 {
-		workdir, err = ioutil.TempDir("", "system_p")
+		workdir, err = os.MkdirTemp("", "system_p")
 		if err != nil {
 			return nil, err
 		}

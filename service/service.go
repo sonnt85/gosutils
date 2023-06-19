@@ -166,7 +166,7 @@ func NewService(runcunf RunFunc, name, fakename string, autoinstall bool, descri
 		}
 
 		//		if retbyte, _ := psrv.Manage(os.Args[1]); retbyte != 128 {
-		//			if os.Getenv("PLOG") == "yes" {
+		//			if os.Getenv("PLOG") == "true" {
 		//				slogrus.Infof("CommandOutput: retbyte (%v): [%v] \n", retbyte, err)
 		//			}
 		//			os.Exit(0)

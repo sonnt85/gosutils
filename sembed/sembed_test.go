@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//go:embed statictest
+//go:embed statictest/**
 var efs embed.FS
 
 func printFsInfo(finfo []fs.FileInfo) {
@@ -21,13 +21,14 @@ func printFsInfo(finfo []fs.FileInfo) {
 func TestHttpSystemFS(t *testing.T) {
 	var retbyte = make([]byte, 100)
 	var err error
-	fs, err := NewHttpSystemFS(&efs, "statictest")
+	fs, err := NewHttpSystemFS(&efs, "statictest", "statictest")
 
 	// fs, err := NewHttpSystemFS(&efs)
 	require.Nil(t, err)
-
+	retbyte, err = fs.ReadFile("hello.txt")
+	require.Nil(t, err)
 	// fmt.Println(fs.FindFilesMatchRegexpPathFromRoot("/dir1", "hello*", -1, true, true))
-	err = fs.Copy(`./statictestcopy/`, "dir1")
+	err = fs.Copy(`./statictestcopy/`, ".dir1")
 	require.Nil(t, err)
 	// return
 	f, err := fs.Open(`dir1`)
@@ -39,8 +40,7 @@ func TestHttpSystemFS(t *testing.T) {
 	// fmt.Printf("%#v", finfos)
 	// return
 	// fs.Setsub("statictest")
-	retbyte, err = fs.ReadFile("dir1/hello1.txt")
-	require.Nil(t, err)
+
 	fmt.Println(string(retbyte))
 	// return
 	f, err = fs.Open("hello.txt")

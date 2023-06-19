@@ -6,8 +6,8 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"errors"
-	"fmt"
 	"math"
 	"math/big"
 	"strings"
@@ -51,7 +51,7 @@ func EncrypBytesToString(data []byte, passphrase []byte) (retbstring string, err
 	return base64.RawStdEncoding.EncodeToString(ciphertext), nil
 }
 
-// enctyp file filename (string or *os.File) to byte array use hash
+// enctyp file filename (string path file or io.Writer) to byte array use hash
 func EncryptBytesToFile(filename interface{}, data []byte, passphrase []byte) (err error) {
 	var f io.Writer
 	// *os.File
@@ -166,7 +166,7 @@ func StringSimpleEncrypt(input, key string) (output string) {
 }
 
 func StringSimpleDecrypt(input, key string) (output string, err error) {
-	data := []byte{}
+	var data []byte
 	// data, err = base64.StdEncoding.DecodeString(input)
 	data, err = base64.RawStdEncoding.DecodeString(input)
 	if err != nil {
@@ -218,85 +218,214 @@ func StringUnzip(input string) (data []byte, err error) {
 	}
 }
 
-func gunzipWrite(w io.Writer, data []byte) error {
-	// Write gzipped data to the client
-	gr, err := gzip.NewReader(bytes.NewBuffer(data))
-	defer gr.Close()
-	data, err = ioutil.ReadAll(gr)
-	if err != nil {
-		return err
-	}
-	w.Write(data)
-	return nil
-}
-
-func GunzipFile(newfilename, gzipfilePath string, removeZipFile bool) (err error) {
-	var gzipfile, writer *os.File
-	var reader *gzip.Reader
-	defer func() {
-		if err == nil && removeZipFile {
-			err = os.Remove(gzipfilePath)
+// This function GunzipFile takes in two parameters: newfilename and gzipfilePath, which can be either a file path or an io.Writer/io.Reader interface.
+// It also takes in a boolean variable removeZipFile which indicates whether the original gzip file should be removed after decompression.
+// Additionally, an optional password parameter can be passed as a byte slice to decrypt the gzip file if it is password-protected.
+// The function returns an error if any issues arise during the decompression process.
+// Overall, this function is useful for decompressing gzip files, optionally removing the original file, and decrypting password-protected files if necessary.
+func GunzipFile(newfilename, gzipfilePath interface{}, removeZipFile bool, password ...[]byte) (err error) {
+	var fw, fr *os.File
+	var rd io.Reader
+	var wt io.Writer
+	var filemod os.FileMode
+	filemod = 0755
+	switch v := gzipfilePath.(type) {
+	case io.Reader:
+		rd = v
+	case string:
+		fr, err = os.Open(v)
+		if err != nil {
+			return
 		}
-	}()
-	gzipfile, err = os.Open(gzipfilePath)
-
-	if err != nil {
-		return
+		defer func() {
+			fr.Close()
+			if err == nil && removeZipFile {
+				err = os.Remove(v)
+			}
+		}()
+		var inputInfo os.FileInfo
+		inputInfo, err = os.Stat(v)
+		if err != nil {
+			return
+		}
+		filemod = inputInfo.Mode().Perm()
+		rd = fr
+	default:
+		return errors.New("param is of unknown type")
 	}
 
-	reader, err = gzip.NewReader(gzipfile)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+	switch v := newfilename.(type) {
+	case io.Writer:
+		wt = v
+	case string:
+		fw, err = os.OpenFile(v, os.O_RDWR|os.O_CREATE|os.O_TRUNC, filemod)
+		if err != nil {
+			return
+		}
+		wt = fw
+		defer func() {
+			fw.Close()
+		}()
+	default:
+		return errors.New("param is of unknown type")
 	}
-	defer reader.Close()
 
-	writer, err = os.Create(newfilename)
+	var reader *gzip.Reader
 
-	if err != nil {
-		return
+	var key []byte
+	if len(password) != 0 && len(password[0]) != 0 {
+		var block cipher.Block
+		hash := sha256.Sum256(password[0])
+		key = hash[:]
+		block, err = aes.NewCipher(key)
+		if err != nil {
+			return err
+		}
+
+		iv := make([]byte, aes.BlockSize)
+		_, err = io.ReadFull(rd, iv)
+		if err != nil {
+			return err
+		}
+		stream := cipher.NewCTR(block, iv)
+		reader, err = gzip.NewReader(rd)
+		if err != nil {
+			return
+		}
+		defer reader.Close()
+		readeren := &cipher.StreamReader{
+			S: stream,
+			R: reader,
+		}
+		_, err = io.Copy(wt, readeren)
+	} else {
+		reader, err = gzip.NewReader(rd)
+		if err != nil {
+			return
+		}
+		defer reader.Close()
+		_, err = io.Copy(wt, reader)
 	}
-
-	defer writer.Close()
-
-	_, err = io.Copy(writer, reader)
 	return
 }
 
-// max compressLevel is 9
-func ZipFile(dst, src string, removeSrc bool, compressLevel ...int) (err error) {
-	var fw, fr *os.File
-	fr, err = os.Open(src)
-	if err != nil {
-		return
-	}
-	defer func() {
-		fr.Close()
-		if err == nil && removeSrc {
-			err = os.Remove(src)
-		}
-	}()
+func ZipFile(source, destination string, removeSrc bool) error {
+	return GzipFile(destination, source, removeSrc, -1)
+}
 
-	var inputInfo os.FileInfo
-	inputInfo, err = os.Stat(src)
-	if err != nil {
-		return
+// GzipFile compresses the source file or input stream to the destination file or output stream using gzip compression.
+// The maximum compressLevel is 9 (default).
+// The "dst" and "src" parameters specify the file paths or the input/output streams to read/write the data.
+// The "removeSrc" parameter indicates whether to remove the source file after compression.
+// The "compressLevel" parameter sets the level of compression to be used (0-9, where 0 is no compression and 9 is maximum compression).
+// The optional "password" parameter is a slice of bytes that represents the password to use for encryption, if any.
+// The function returns an error if any operation fails.
+func GzipFile(dst, src interface{}, removeSrc bool, compressLevel int, password ...[]byte) (err error) {
+	var fw, fr *os.File
+	var rd io.Reader
+	var wt io.Writer
+	var gzipWriter *gzip.Writer
+
+	var filemod os.FileMode
+	filemod = 0755
+	switch v := src.(type) {
+	case io.Reader:
+		rd = v
+	case string:
+		fr, err = os.Open(v)
+		if err != nil {
+			return
+		}
+		defer func() {
+			fr.Close()
+			if err == nil && removeSrc {
+				err = os.Remove(v)
+			}
+		}()
+		var inputInfo os.FileInfo
+		inputInfo, err = os.Stat(v)
+		if err != nil {
+			return
+		}
+		filemod = inputInfo.Mode().Perm()
+		rd = fr
+	default:
+		return errors.New("param is of unknown type")
 	}
-	fw, err = os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, inputInfo.Mode().Perm())
+
+	switch v := dst.(type) {
+	case io.Writer:
+		wt = v
+	case string:
+		fw, err = os.OpenFile(v, os.O_RDWR|os.O_CREATE|os.O_TRUNC, filemod)
+		if err != nil {
+			return
+		}
+		wt = fw
+		defer func() {
+			fw.Close()
+		}()
+	default:
+		return errors.New("param is of unknown type")
+	}
+
 	// fw, err = os.Create(dst)
-	if err != nil {
-		return err
+	var key []byte
+	if len(password) > 0 && len(password[0]) != 0 {
+		hash := sha256.Sum256(password[0])
+		key = hash[:]
 	}
-	defer fw.Close()
 	clv := 9
-	if len(compressLevel) != 0 && (compressLevel[0] <= gzip.BestCompression && compressLevel[0] >= gzip.HuffmanOnly) { //auto compressLevel
-		clv = compressLevel[0]
+	if compressLevel <= gzip.BestCompression && compressLevel >= gzip.HuffmanOnly {
+		clv = compressLevel
 	}
-	w, _ := gzip.NewWriterLevel(fw, clv)
-	if _, err = io.Copy(w, fr); err != nil {
-		return err
+	if len(key) > 0 {
+		var block cipher.Block
+		block, err = aes.NewCipher(key)
+		if err != nil {
+			return err
+		}
+
+		iv := make([]byte, aes.BlockSize)
+		_, err = io.ReadFull(rand.Reader, iv)
+		if err != nil {
+			return err
+		}
+
+		_, err = wt.Write(iv)
+		if err != nil {
+			return err
+		}
+
+		gzipWriter, err = gzip.NewWriterLevel(wt, clv)
+		if err != nil {
+			return err
+		}
+		defer gzipWriter.Close()
+		// gzipWriter.Header.Comment = "AES encrypted data"
+		// gzipWriter.Header.Extra = []byte("AES-256")
+		// gzipWriter.Write(nil)
+		stream := cipher.NewCTR(block, iv)
+		writer := cipher.StreamWriter{
+			S: stream,
+			W: gzipWriter,
+		}
+
+		_, err = io.Copy(writer, rd)
+		if err != nil {
+			return err
+		}
+	} else {
+		gzipWriter, err = gzip.NewWriterLevel(wt, clv)
+		if err != nil {
+			return err
+		}
+		defer gzipWriter.Close()
+		if _, err = io.Copy(gzipWriter, rd); err != nil {
+			return err
+		}
 	}
-	w.Close()
+
 	return
 }
 
@@ -308,6 +437,16 @@ func GenerateRandomBytes(n int) ([]byte, error) {
 		return nil, err
 	}
 	return b, nil
+}
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+func GenerateRandomAssci(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[RandRangeInterger(0, len(letterRunes)-1)]
+	}
+	return string(b)
 }
 
 func RandUnt64() uint64 {

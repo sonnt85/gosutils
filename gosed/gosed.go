@@ -38,7 +38,7 @@ func FileReplaceRegex(pat, tostring, filepath string, literalFlags ...bool) (err
 		newstring = r.ReplaceAllString(contenStr, tostring)
 	}
 
-	if bytes.Compare([]byte(newstring), allbytes) == 0 {
+	if bytes.Equal([]byte(newstring), allbytes) {
 		return nil
 	} else {
 		return ioutil.WriteFile(filepath, []byte(newstring), fs.FileMode(0644))
@@ -47,12 +47,6 @@ func FileReplaceRegex(pat, tostring, filepath string, literalFlags ...bool) (err
 
 func StringToPattern(str string) (retstring string) {
 	return regexp.QuoteMeta(str)
-
-	for _, vrune := range string(`\.+*?()|[]{}^$`) {
-		v := string(vrune)
-		str = strings.ReplaceAll(str, v, `\`+v)
-	}
-	return str
 }
 
 func SedString(sedscript, data string) (changed bool, retstring string, err error) {
@@ -91,7 +85,7 @@ func SedFunc(sedscript, filepath_or_string string, isFile bool) (changed bool, r
 		if err != nil {
 			return
 		}
-		if bytes.Compare(buf.Bytes(), orgcontents) != 0 {
+		if !bytes.Equal(buf.Bytes(), orgcontents) {
 			info, err := os.Stat(filepath_or_string)
 			if err != nil {
 				return false, "", err
@@ -109,7 +103,7 @@ func SedFunc(sedscript, filepath_or_string string, isFile bool) (changed bool, r
 	} else {
 		orgcontents := filepath_or_string
 		if retstring, err = engine.RunString(filepath_or_string); err != nil {
-			if bytes.Compare([]byte(retstring), []byte(orgcontents)) != 0 {
+			if !bytes.Equal([]byte(retstring), []byte(orgcontents)) {
 				return true, retstring, nil
 			} else {
 				return false, retstring, nil

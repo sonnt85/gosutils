@@ -13,19 +13,22 @@ import (
 )
 
 var (
-	ErrParamsNotAdapted = errors.New("The number of params is not adapted.")
+	ErrParamsNotAdapted = errors.New("the number of params is not adapted")
 )
 
-//constraints.Ordered
+// constraints.Ordered
 type Task[K constraints.Ordered] struct {
-	Name    string
-	Id      K
-	f       reflect.Value
-	params  []reflect.Value
-	results []reflect.Value
+	Name   string
+	Id     K
+	f      reflect.Value
+	params []reflect.Value
+	// results []reflect.Value
+	results []interface{}
 	*sync.RWMutex
 	*sync.Cond
 	done    bool
+	ignore  bool
+	msg     string
 	errCall error
 }
 
@@ -87,7 +90,7 @@ func parserParams(f interface{}, params ...interface{}) (paramsValue []reflect.V
 	funcValue := reflect.ValueOf(f)
 
 	if funcValue.Kind() != reflect.Func {
-		err = errors.New("f is not function.")
+		err = errors.New("f is not function")
 		return
 	}
 	// if (len(params) != funcValue.Type().NumIn()) ||
@@ -144,15 +147,19 @@ func NewTask[K constraints.Ordered](taskname string, fid func() K, f interface{}
 		Name:    taskname,
 		f:       funcValue,
 		params:  paramsValue,
-		Id:      FIDAuto[K](fid)(),
+		Id:      FIDAuto(fid)(),
 		RWMutex: new(sync.RWMutex),
 	}
 	task.Cond = sync.NewCond(task.RWMutex)
 	return task, nil
 }
 
-func (t *Task[K]) GetFuncDetail() (f reflect.Value, params []reflect.Value, results []reflect.Value, err error) {
-	return t.f, t.params, t.results, t.errCall
+func (t *Task[K]) GetFuncDetail() (f reflect.Value, params []interface{}, results []interface{}, err error) {
+	params = make([]interface{}, 0)
+	for _, v := range t.params {
+		params = append(params, v.Interface())
+	}
+	return t.f, params, t.results, t.errCall
 }
 
 func (t *Task[K]) GCTask() {
@@ -160,7 +167,7 @@ func (t *Task[K]) GCTask() {
 	t.f = reflect.ValueOf(struct{}{})
 }
 
-func (t *Task[K]) Call() (results []reflect.Value, err error) {
+func (t *Task[K]) Call() (results []interface{}, err error) {
 	defer func() {
 		t.Lock()
 		if r := recover(); r == nil {
@@ -177,7 +184,10 @@ func (t *Task[K]) Call() (results []reflect.Value, err error) {
 	params := make([]reflect.Value, len(t.params))
 	copy(params, t.params)
 	t.RUnlock()
-	results = t.f.Call(params)
+	results = make([]interface{}, 0)
+	for _, i := range t.f.Call(params) {
+		results = append(results, i.Interface())
+	}
 	return
 }
 
@@ -203,13 +213,13 @@ func (t *Task[K]) ResetParasIfFinish() (b bool) {
 	return
 }
 
-func (t *Task[K]) GetRetValues() (retValue []reflect.Value, ok bool) {
+func (t *Task[K]) GetRetValues() (retValue []interface{}, ok bool) {
 	t.RLock()
 	defer t.RUnlock()
 	return t.results, t.done
 }
 
-func (t *Task[K]) WaitTaskFinishThenGetValues() (retValue []reflect.Value) {
+func (t *Task[K]) WaitTaskFinishThenGetValues() (retValue []interface{}) {
 	t.Lock()
 	for !t.done {
 		t.Wait()
@@ -222,4 +232,28 @@ func (t *Task[K]) IsFinish() (b bool) {
 	t.RLock()
 	defer t.RUnlock()
 	return t.done
+}
+
+func (t *Task[K]) IsIgnore() (b bool) {
+	t.RLock()
+	defer t.RUnlock()
+	return t.ignore
+}
+
+func (t *Task[K]) SetIgnore(i bool) {
+	t.Lock()
+	defer t.Unlock()
+	t.ignore = i
+}
+
+func (t *Task[K]) SetMsg(msg string) {
+	t.Lock()
+	defer t.Unlock()
+	t.msg = msg
+}
+
+func (t *Task[K]) GetMsg() string {
+	t.RLock()
+	defer t.RUnlock()
+	return t.msg
 }

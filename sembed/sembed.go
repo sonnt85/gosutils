@@ -61,7 +61,7 @@ func NewEmbedSub() *embedSub {
 
 // fullName maps name to the fully-qualified name dir/name.
 func (f *embedSub) fullName(op string, name string) (string, error) {
-	name = strings.TrimPrefix(name, ".")
+	name = strings.TrimPrefix(name, "./")
 	name = strings.TrimPrefix(name, "/")
 	if !fs.ValidPath(name) {
 		return "", &fs.PathError{Op: op, Path: name, Err: errors.New("invalid name")}
@@ -404,7 +404,7 @@ func (fsh *HttpSystemFS) walkDir(pathdir string, d fs.DirEntry, walkDirFn WalkDi
 }
 
 // copy file or directory from fsh  to fs dirName
-func (fsh *HttpSystemFS) Copy(toDirPath, fromFshPath string) (err error) {
+func (fsh *HttpSystemFS) Copy(toDirPath, fromFshPath string, mods ...fs.FileMode) (err error) {
 	// defer func() {
 	// 	if err != nil {
 	// 		//cleanup function
@@ -432,7 +432,7 @@ func (fsh *HttpSystemFS) Copy(toDirPath, fromFshPath string) (err error) {
 	// 		return err
 	// 	}
 	// }
-	return cr.Copy(toDirPath, fromFshPath)
+	return cr.Copy(toDirPath, fromFshPath, mods...)
 }
 
 func (fsh *HttpSystemFS) Sub(dir string) (sub *HttpSystemFS, err error) {

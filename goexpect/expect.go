@@ -168,8 +168,8 @@ func SetEnv(env []string) Option {
 	}
 }
 
-// SetSysProcAttr sets the SysProcAttr syscall values for the spawned process. 
-// Because this modifies cmd, it will only work with the process spawners 
+// SetSysProcAttr sets the SysProcAttr syscall values for the spawned process.
+// Because this modifies cmd, it will only work with the process spawners
 // and not effect the GExpect option method.
 func SetSysProcAttr(args *syscall.SysProcAttr) Option {
 	return func(e *GExpect) Option {
@@ -219,19 +219,19 @@ type BatchRes struct {
 // Batcher interface is used to make it more straightforward and readable to create
 // batches of Expects.
 //
-// var batch = []Batcher{
-//	&BExpT{"password",8},
-//	&BSnd{"password\n"},
-//	&BExp{"olakar@router>"},
-//	&BSnd{ "show interface description\n"},
-//	&BExp{ "olakar@router>"},
-// }
+//	var batch = []Batcher{
+//		&BExpT{"password",8},
+//		&BSnd{"password\n"},
+//		&BExp{"olakar@router>"},
+//		&BSnd{ "show interface description\n"},
+//		&BExp{ "olakar@router>"},
+//	}
 //
-// var batchSwCaseReplace = []Batcher{
-//	&BCasT{[]Caser{
-//		&BCase{`([0-9]) -- .*\(MASTER\)`, `\1` + "\n"}}, 1},
-//	&BExp{`prompt/>`},
-// }
+//	var batchSwCaseReplace = []Batcher{
+//		&BCasT{[]Caser{
+//			&BCase{`([0-9]) -- .*\(MASTER\)`, `\1` + "\n"}}, 1},
+//		&BExp{`prompt/>`},
+//	}
 type Batcher interface {
 	// cmd returns the Batch command.
 	Cmd() int
@@ -643,9 +643,10 @@ func (e *GExpect) check() bool {
 // ExpectSwitchCase checks each Case against the accumulated out buffer, sending specified
 // string back. Leaving Send empty will Send nothing to the process.
 // Substring expansion can be used eg.
-// 	Case{`vf[0-9]{2}.[a-z]{3}[0-9]{2}\.net).*UP`,`show arp \1`}
-// 	Given: vf11.hnd01.net            UP      35 (4)        34 (4)          CONNECTED         0              0/0
-// 	Would send: show arp vf11.hnd01.net
+//
+//	Case{`vf[0-9]{2}.[a-z]{3}[0-9]{2}\.net).*UP`,`show arp \1`}
+//	Given: vf11.hnd01.net            UP      35 (4)        34 (4)          CONNECTED         0              0/0
+//	Would send: show arp vf11.hnd01.net
 func (e *GExpect) ExpectSwitchCase(cs []Caser, timeout time.Duration) (string, []string, int, error) {
 	// Compile all regexps
 	rs := make([]*regexp.Regexp, 0, len(cs))
@@ -732,7 +733,7 @@ func (e *GExpect) ExpectSwitchCase(cs []Caser, timeout time.Duration) (string, [
 				matchIndex := rs[i].FindStringIndex(tbufString)
 				o = tbufString[0:matchIndex[1]]
 				e.returnUnmatchedSuffix(tbufString[matchIndex[1]:])
-			} 
+			}
 
 			tbuf.Reset()
 
@@ -743,7 +744,7 @@ func (e *GExpect) ExpectSwitchCase(cs []Caser, timeout time.Duration) (string, [
 					// \(submatch) will be expanded in the Send string.
 					// To escape use \\(number).
 					si := strconv.Itoa(i)
-					r := strings.NewReplacer(`\\`+si, `\`+si, `\`+si, `\\`+si)
+					r := strings.NewReplacer(`\\`+si, "\\"+si, "\\"+si, `\\`+si)
 					st = r.Replace(st)
 					st = strings.Replace(st, `\\`+si, match[i], -1)
 				}
@@ -1127,11 +1128,11 @@ func (e *GExpect) Read(p []byte) (nr int, err error) {
 }
 
 func (e *GExpect) returnUnmatchedSuffix(p string) {
-    e.mu.Lock()
-    defer e.mu.Unlock()
-    newBuffer := bytes.NewBufferString(p)
-    newBuffer.WriteString(e.out.String())
-    e.out = *newBuffer
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	newBuffer := bytes.NewBufferString(p)
+	newBuffer.WriteString(e.out.String())
+	e.out = *newBuffer
 }
 
 // Send sends a string to spawned process.

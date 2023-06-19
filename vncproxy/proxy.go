@@ -135,7 +135,7 @@ func (p *Proxy) GetConnectionTimeRegexp(tokenRegexp string) (d map[string]time.D
 	d = make(map[string]time.Duration, len(ps))
 	var ok bool
 	var token string
-	for v, _ := range ps {
+	for v := range ps {
 		if sregexp.New(tokenRegexp).MatchString(v.Token) {
 			_, ok = d[v.Token]
 			if ok {

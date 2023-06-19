@@ -33,7 +33,7 @@ func TestTask(t *testing.T) {
 	}
 	// return
 	fmt.Println("task id: ", task.Id)
-	if str, ok = retval[0].Interface().(string); ok {
+	if str, ok = retval[0].(string); ok {
 		fmt.Println(str)
 		for k, v := range retval {
 			fmt.Printf("[%d] %#v\n", k, v)

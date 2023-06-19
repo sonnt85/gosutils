@@ -46,10 +46,10 @@ func Init() {
 	// threshold := TotalMemory() * uint64(defaultGCPercent) / 100
 	version := runtime.Version()[2:]
 	if v, err := strconv.ParseFloat(version, 64); err == nil && v < 1.19 {
-		slogrus.Debug("Init tunning gc: ", threshold)
+		slogrus.DebugS("Init tunning gc: ", threshold)
 		Tuning(threshold)
 	} else {
-		slogrus.Debug("Init tunning gc(SetMemoryLimit): ", threshold)
+		slogrus.DebugS("Init tunning gc(SetMemoryLimit): ", threshold)
 		debug.SetMemoryLimit(int64(threshold))
 	}
 
@@ -116,7 +116,7 @@ func (t *gcauto) tuning() {
 		return
 	}
 	gogc := calcGCPercent(inuse, threshold)
-	slogrus.Debugf("Config new gogc: %d [%d]", gogc, inuse)
+	slogrus.DebugfS("Config new gogc: %d [%d]", gogc, inuse)
 	t.setGCPercent(gogc)
 }
 

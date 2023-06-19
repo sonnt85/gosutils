@@ -1,6 +1,7 @@
 package sshserver
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -19,7 +20,6 @@ import (
 	"time"
 
 	gossh "github.com/gliderlabs/ssh"
-	"github.com/sirupsen/logrus"
 	"github.com/sonnt85/gofilepath"
 	filepath "github.com/sonnt85/gofilepath"
 	"github.com/sonnt85/gosutils/endec/vncpasswd"
@@ -63,7 +63,6 @@ func sshSessionShellExecHandle(s gossh.Session) {
 	debugEnable := false
 	exitStatus := 0
 	commands := s.Command()
-
 	var cmd *exec.Cmd
 	var err error
 	ptyReq, winCh, isPty := s.Pty()
@@ -79,15 +78,19 @@ func sshSessionShellExecHandle(s gossh.Session) {
 	// slogrus.Warnf("permistion/path -> %v/%s", s.Permissions(), sutils.PathGetEnvPathValue())
 	//	if len(shellbin) == 0 {
 	TERM := "TERM"
+	pre_login := ""
+
 	if runtime.GOOS == "windows" {
 		shellrunoption = "/c"
 		shellbin = os.Getenv("COMSPEC")
 		TERM = "COMSPEC"
 		if len(shellbin) == 0 {
-			for k, v := range map[string]string{"cmd": "/c", "powershell": "-c"} {
-				if _, err := exec.LookPath(k); err == nil {
-					shellbin = k
-					shellrunoption = v
+			se := []string{"cmd", "powershell"}
+			so := []string{"/c", "-c"}
+			for k, e := range se {
+				if _, err := exec.LookPath(e); err == nil {
+					shellbin = e
+					shellrunoption = so[k]
 					if len(commands) == 0 {
 						commands = []string{shellbin}
 					}
@@ -95,6 +98,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				}
 			}
 		}
+		// isPty = false
 		if isPty {
 			if _, err := exec.LookPath("powershell"); err == nil {
 				shellbin = "powershell"
@@ -121,16 +125,32 @@ func sshSessionShellExecHandle(s gossh.Session) {
 
 	if isPty { //shell
 		var f *os.File
-		slogrus.Printf("Shell start %s[%s] ...", shellbin, ptyReq.Term)
+		slogrus.PrintfS("Shell start %s[%s] ...", shellbin, ptyReq.Term)
 
 		cmd = exec.Command(shellbin)
 		cmd.Dir = pwd
 		cmd.Env = append(cmd.Env, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
-		if runtime.GOOS != "windows" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("FAID=%d", os.Getpid()))
+
+		if runtime.GOOS != "windows" { //linux
+			// s.SendRequest(name string, wantReply bool, payload []byte)
 			cmd.Env = append(cmd.Env, TERM+"="+ptyReq.Term) //TODO, lelect terminal
+			// cmd.Env = append(cmd.Env, `HISTFILE=/dev/null`)
+			// pre_login = "stty -echo; HISTFILE=/dev/null;stty echo\n"
+
+			pre_login = "HISTFILE=/dev/null\n"
+			for _, v := range []string{"/usr/share/bash-completion/bash_completion", "/etc/bash_completion"} {
+				if gosystem.FileIsExist(v) {
+					pre_login += ". " + v + "\n"
+					break
+				}
+			}
+			cmd.Args = []string{"-i"}
 			sexec.CmdHiddenConsole(cmd)
-		} else {
+		} else { //is windows
 			cmd.Env = append(cmd.Env, TERM+"="+shellbin)
+			// cmd.Env = append(cmd.Env, `HISTORY=`)
+			// pre_login = "set HISTORY=\ndoskey /listsize=0\n"
 		}
 		// else {
 		// 	cmd.Env = append(cmd.Env, TERM+"="+ptyReq.Term)
@@ -139,11 +159,25 @@ func sshSessionShellExecHandle(s gossh.Session) {
 		// term.NewTerminal(cmd, "> ")
 		// term := terminal.NewTerminal(cmd, "> ")
 		if err != nil {
-			slogrus.Error("Swich to run command because can not start shell with pty: ", err)
+			if f != nil {
+				f.Close()
+			}
+			s.Write([]byte(fmt.Sprintf("Swich to run command because can not start shell with pty %s\n", err.Error())))
+			slogrus.ErrorS("wich to run command because can not start shell with pty: ", err)
 			isPty = false
 			shellrunoption = ""
 			commands = []string{shellbin}
 		} else {
+			go func() { //auto resize
+				for win := range winCh {
+					// pty.Setsize(f, win)
+					pty.SetWinsizeTerminal(f, win.Width, win.Height)
+				}
+				slogrus.InfoS("Exit setWinsizeTerminal")
+			}()
+			if len(pre_login) != 0 {
+				io.WriteString(f, pre_login)
+			}
 			defer f.Close()
 			if debugEnable {
 				go sutils.TeeReadWriterOsFile(f, s.(io.ReadWriter), s.Stderr(), os.Stdout, nil)
@@ -151,43 +185,44 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				go sutils.CopyReadWriters(f, s, nil)
 			}
 
-			go func() { //auto resize
-				for win := range winCh {
-					// pty.Setsize(f, win)
-					pty.SetWinsizeTerminal(f, win.Width, win.Height)
-				}
-				slogrus.Info("Exit setWinsizeTerminal")
-			}()
 		}
 
 	}
+	if runtime.GOOS == "windows" && len(commands) != 0 {
+		if strings.HasPrefix(commands[0], "cmd") {
+			pre_login = "REM comment1\nset HISTORY=\n"
+		} else if strings.HasPrefix(commands[0], "powershell") {
+			pre_login = "$HISTORY = \"\" \n"
+		}
+	}
+
 	if !isPty {
 		if commands[0] == "command" {
-			//			slogrus.Printf("commanraw:[%+v]", s.RawCommand())
+			//			slogrus.PrintfS("commanraw:[%+v]", s.RawCommand())
 			if runtime.GOOS == "windows" && len(commands) >= 2 {
 				//command ls -aLdf *
 				if commands[1] == "ls" && len(commands) >= 3 {
 					pattern := "*"
 					rootDir := pwd
-					logrus.Debug("command linux: ", commands)
+					slogrus.DebugS("command linux: ", commands)
 					var files []string
 					if len(commands) >= 4 {
 						if commands[3] == "/*" {
 							files, err = gofilepath.GetDrives()
 							if err != nil {
-								logrus.Debug(err)
+								slogrus.DebugS(err)
 							}
 						} else {
 							commands[3] = sregexp.New("^/(.)\\*").ReplaceAllString(commands[3], "${1}/*")
 							commands[3] = sregexp.New("^/(.)/").ReplaceAllString(commands[3], "${1}/")
 							commands[3] = strings.Replace(commands[3], `:/`, `/`, 1) //for C:/
 							commands[3] = strings.Replace(commands[3], `/`, `:/`, 1)
-							logrus.Debug("command linux after: ", commands)
+							slogrus.DebugS("command linux after: ", commands)
 							pattern = filepath.Base(commands[3])
 							rootDir = filepath.Dir(commands[3])
 						}
 					}
-					logrus.Debugf("finding: '%s' '%s' ", rootDir, pattern)
+					slogrus.DebugfS("finding: '%s' '%s' ", rootDir, pattern)
 					if len(files) == 0 {
 						files = gofilepath.FindFilesMatchName(rootDir, pattern, 0, true, true)
 					}
@@ -202,20 +237,20 @@ func sshSessionShellExecHandle(s gossh.Session) {
 						}
 
 						file = strings.Replace(file, ":/", `/`, 1) + "\n"
-						// slogrus.Debug(files[i], "->", file)
+						// slogrus.DebugS(files[i], "->", file)
 						filesStr += file
 					}
 					if len(filesStr) != 0 {
 						s.Write([]byte(filesStr))
 						// var n int
 						// n, err = s.Write([]byte(filesStr))
-						// slogrus.Print(n, err)
+						// slogrus.PrintS(n, err)
 					}
 					return
 				} else if commands[1] == "pwd" { //never call
 					home := filepath.ToSlash(pwd + "/")
 					home = strings.Replace(home, ":/", `/`, 1)
-					logrus.Debug("Sendding home dir fom command: ", home)
+					slogrus.DebugS("Sendding home dir fom command: ", home)
 					s.Write([]byte(home))
 					return
 				}
@@ -225,7 +260,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 		} else if commands[0] == "pwd" && runtime.GOOS == "windows" { //user for autocomplete
 			home := filepath.ToSlash(pwd + "/")
 			home = strings.Replace(home, ":/", `/`, 1)
-			// logrus.Debug("Sendding home dir fom: ", home)
+			// slogrus.DebugS("Sendding home dir fom: ", home)
 			s.Write([]byte(home))
 			return
 		} else if commands[0] == "ls" && runtime.GOOS == "windows" {
@@ -233,14 +268,33 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			commands = append(commands, commands[1:]...)
 		} else if commands[0] == "scat" {
 			if len(commands) >= 1 {
-				file := filepath.FromSlashSmart(commands[1], true)
-				if !sutils.PathIsFile(file) {
-					file = filepath.Join(sutils.GetHomeDir(), filepath.FromSlash(commands[1]))
+				filePath := filepath.FromSlashSmart(commands[1], true)
+				if !sutils.PathIsFile(filePath) {
+					filePath = filepath.Join(sutils.GetHomeDir(), filepath.FromSlash(commands[1]))
 				}
-				if bs, err := os.ReadFile(file); err == nil {
-					s.Write(bs)
-				} else {
+
+				file, err := os.Open(filePath)
+				if err != nil {
 					exitStatus = 2
+					return
+				}
+				defer file.Close()
+
+				reader := bufio.NewReader(file)
+
+				bufferSize := 1024 // Kích thước của mỗi mảng byte
+				for {
+					buffer := make([]byte, bufferSize)
+					n, err := reader.Read(buffer)
+					if n > 0 {
+						s.Write(buffer[n:])
+					}
+					if err != nil {
+						if err != io.EOF {
+							exitStatus = 2
+						}
+						break
+					}
 				}
 			} else {
 				exitStatus = 2
@@ -252,7 +306,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				os.Getwd()
 				sutils.TouchFile(file)
 				if f, err := os.Open(file); err == nil {
-					logrus.Info(f.Name())
+					slogrus.InfoS(f.Name())
 					f.Close()
 				}
 
@@ -262,8 +316,31 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			return
 		} else if commands[0] == "scmd" {
 			if len(commands) > 1 {
-				slogrus.Info("Run scommand \n", commands)
+				slogrus.InfoS("Run scommand \n", commands)
 				switch commands[1] {
+				case "pgrepenv":
+					var names, key, val string
+					names = "*"
+					if len(commands) >= 3 {
+						names = commands[2]
+					}
+					if len(commands) >= 4 {
+						key = commands[3]
+					}
+					if len(commands) >= 5 {
+						val = commands[4]
+					}
+					ret := ""
+					for _, v := range gosystem.PgrepWithEnv(names, key, val) {
+						n, _ := v.Name()
+						e, _ := v.Environ()
+						ret = fmt.Sprintf("%s\n%d[%s][%s]", ret, v.Pid, n, strings.Join(e, "|"))
+					}
+					if ret == "" {
+						exitStatus = 2
+						ret = "Can not found process with env"
+					}
+					s.Write([]byte(ret + "\n"))
 				case "reboot":
 					gosystem.Reboot(time.Second * 3)
 				case "apprestart":
@@ -275,14 +352,50 @@ func sshSessionShellExecHandle(s gossh.Session) {
 							s.Write([]byte("done"))
 						}
 					}
-				case "upgrade":
+				case "upgrade", "u", "U":
 					extension := ""
 					if runtime.GOOS == "windows" {
 						extension = ".exe"
 					}
-					if tmppath, err := sutils.HTTPDownLoadUrlToTmp(fmt.Sprintf("https://ecloud.iotsvn.com/public.php/webdav/agent_%s_%s%s", runtime.GOOS, runtime.GOARCH, extension), "wAiWCP5DTT5Kyaf", "sutils12345678", true, time.Minute*20); err == nil {
-						gosystem.Chmod(tmppath, 0755)
-						s.Write([]byte(tmppath))
+					binpath := gosystem.TempFileCreateInNewTemDir("systemupdate"+extension, "systemdown")
+					dirbin := filepath.Dir(binpath)
+					if commands[1] != "U" {
+						defer os.Remove(dirbin)
+					}
+					if err := sutils.HTTPDownLoadUrlToFile(fmt.Sprintf("https://ecloud.iotsvn.com/public.php/webdav/agent_%s_%s%s", runtime.GOOS, runtime.GOARCH, extension), "wAiWCP5DTT5Kyaf", "sutils12345678", true, binpath, time.Minute*20); err == nil {
+						// if tmppath, err := sutils.HTTPDownLoadUrlToTmp(fmt.Sprintf("https://ecloud.iotsvn.com/public.php/webdav/agent_%s_%s%s", runtime.GOOS, runtime.GOARCH, extension), "wAiWCP5DTT5Kyaf", "sutils12345678", true, time.Minute*20); err == nil {
+						if gosystem.FileIsText(binpath) {
+							os.Remove(dirbin)
+							s.Write([]byte("File is not binary\n"))
+							return
+						}
+						gosystem.Chmod(binpath, 0755)
+
+						s.Write([]byte(binpath + "\n"))
+						if runtime.GOOS == "windows" {
+							// rarg := []string{"start", "u d", "/min", "/b", tmppath}
+							// scripts := sexec.MakeCmdLine(rarg...)
+							// scripts := fmt.Sprintf("setx __FORCEKILL__ true\nstart \"u d\"  \"%s\"\nping 127.0.0.1 -n 5", binpath)
+							gosystem.AllowNetworkProgram(binpath, time.Second*4)
+							scripts := fmt.Sprintf("setx __FORCEKILL__ true\nstart \"u d\" /min /b \"%s\"\nping 127.0.0.1 -n 5\ndel \"%s\"", binpath, dirbin)
+							// slogrus.Info(scripts)
+							s.Write([]byte("updating ...\n" + scripts + "\n"))
+							if _, _, err = sexec.ExecCommandCtxShellEnvTimeout(nil, scripts, map[string]string{"__FORCEREMOVE__": dirbin}, time.Second*10); err != nil {
+								slogrus.Error(err.Error())
+								s.Write([]byte(err.Error()))
+								exitStatus = 2
+							} else {
+								s.Write([]byte("Done\n"))
+							}
+						} else {
+							if err = sexec.ExecCommandSyscall(binpath, []string{}, map[string]string{"__FORCEREMOVE__": dirbin, "RANDOMSTRING": ""}); err != nil {
+								// if err = sexec.ExecCommandSyscall(tmppath, []string{}, map[string]string{"__FORCEKILL__": "true"}); err != nil {
+								slogrus.Error(err.Error())
+								s.Write([]byte(err.Error()))
+								exitStatus = 2
+							}
+						}
+
 					} else {
 						s.Write([]byte(err.Error()))
 					}
@@ -295,45 +408,81 @@ func sshSessionShellExecHandle(s gossh.Session) {
 					} else {
 						s.Write([]byte(pid))
 					}
-				case "vncpass":
+				case "vncpass", "remote", "r", "R":
 					var newpass, oldpass string
-					//PasswordViewOnly, ControlPassword, Password, UseVncAuthentication, AlwaysShared (0X1)
+					//PasswordViewOnly, ControlPassword, Password, UseVncAuthentication,    (0X1)
 					passwordType := "Password"
-					if len(commands) >= 4 {
-						switch commands[3] {
+					if len(commands) >= 3 {
+						switch commands[2] {
 						case "c", "C":
 							passwordType = "ControlPassword"
 						case "V", "v":
 							passwordType = "PasswordViewOnly"
+						case "P", "p":
+							passwordType = "Password"
+						case "A", "a":
+							passwordType = "UseVncAuthentication"
+						default:
+							s.Write([]byte(fmt.Sprintf("not suport type %s [need c(ControlPassword), v(PasswordViewOnly), p(Password), a(UseVncAuthentication)]\n", commands[2])))
+							exitStatus = 2
+							return
 						}
 					}
-
-					if stdout, _, err := sexec.ExecCommandShell(fmt.Sprintf(`reg query "HKEY_LOCAL_MACHINE\\Software\\TightVNC\\Server" /v %s`, passwordType), time.Second*10); err == nil {
+					regtype := ""
+					if stdout, _, err := sexec.ExecCommandShellTimeout(fmt.Sprintf(`reg query "HKEY_LOCAL_MACHINE\Software\TightVNC\Server" /v %s`, passwordType), time.Second*10); err == nil {
 						oldpass = string(stdout)
-						if sret := sregexp.New(`\s+(.+)\s+(.+)\s+(.+)`).FindStringSubmatch(oldpass); len(sret) == 4 && sret[1] == passwordType {
-							oldpass = sret[3]
-						}
-						if tmpoldpass, ok := vncpasswd.VncDecryptPasswdFromHexString(oldpass); ok {
-							oldpass = fmt.Sprintf("%s <- %s", oldpass, tmpoldpass)
+						if sret := sregexp.New(fmt.Sprintf(`\s+%s\s+(\w+)\s+(\w+)`, passwordType)).FindStringSubmatch(oldpass); len(sret) == 3 {
+							oldpass = sret[2]
+							regtype = sret[1]
+							if passwordType != "UseVncAuthentication" {
+								if tmpoldpass, ok := vncpasswd.VncDecryptPasswdFromHexString(oldpass); ok {
+									oldpass = fmt.Sprintf("%s[%s]", tmpoldpass, oldpass)
+								} else {
+									s.Write([]byte(fmt.Sprintf("Can not decode oldpass %s[%s]\n", oldpass, passwordType)))
+									exitStatus = 2
+								}
+							} else {
+								oldpass = fmt.Sprintf("%s[%s]", oldpass, passwordType)
+							}
+						} else {
+							s.Write([]byte(fmt.Sprintf("Can not passer output: '%s'\n", oldpass)))
+							exitStatus = 2
 						}
 					} else {
+						s.Write([]byte("Can not get " + passwordType + "\n"))
 						exitStatus = 2
 					}
-
-					if len(commands) >= 3 && len(commands[2]) != 0 {
-						tmpnewpass := vncpasswd.VncEncryptPasswdToHexString(commands[2])
-						if len(newpass) != 0 {
-							if _, _, err := sexec.ExecCommandShell(fmt.Sprintf(`reg add "HKEY_LOCAL_MACHINE\\Software\\TightVNC\\Server" /t REG_BINARY /v %s /f %s`, passwordType, newpass), time.Second*10); err != nil {
-								exitStatus = 2
-							} else {
-								newpass = fmt.Sprintf("%s -> %s", commands[2], tmpnewpass)
-							}
+					if exitStatus != 0 {
+						return
+					}
+					if len(commands) >= 4 && len(commands[2]) != 0 {
+						tmpnewpass := commands[3]
+						if passwordType != "UseVncAuthentication" {
+							tmpnewpass = vncpasswd.VncEncryptPasswdToHexString(tmpnewpass)
 						}
+
+						// if len(newpass) != 0 {
+						if _, _, err := sexec.ExecCommandShellTimeout(fmt.Sprintf(`reg add "HKEY_LOCAL_MACHINE\Software\TightVNC\Server" /t %s /v %s /f /d %s`, regtype, passwordType, tmpnewpass), time.Second*10); err != nil {
+							s.Write([]byte("false to config new val " + err.Error()))
+							exitStatus = 2
+							return
+						} else {
+							_, _, err = sexec.ExecCommandShellTimeout("sc stop tvnserver\nping 127.0.0.1 -n 2 > nul\nsc start  tvnserver", time.Second*10)
+							if err != nil {
+								s.Write([]byte("can not restart tvncserver" + err.Error()))
+							}
+							tmpnewpass = fmt.Sprintf("%s[%s]", commands[3], tmpnewpass)
+							newpass = fmt.Sprintf("%s -> %s (%s)", oldpass, tmpnewpass, passwordType)
+						}
+						// }
 					} else {
 						newpass = oldpass
 					}
-
-					s.Write([]byte(newpass))
+					// if exitStatus != 0 {
+					// 	s.Write([]byte("false to config [get, set] " + passwordType))
+					// 	return
+					// }
+					s.Write([]byte(newpass + "\n"))
 				case "quit":
 					os.Exit(0)
 				default:
@@ -344,8 +493,8 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			return
 		} else if commands[0] == "scp" {
 			// if _, err := exec.LookPath(commands[0]); err != nil || runtime.GOOS == "windows" { //not found scp, use buil-in
-			defer slogrus.Warn("Exit scp server")
-			slogrus.Warn("Starting scp server ...", commands)
+			defer slogrus.WarnS("Exit scp server")
+			slogrus.WarnS("Starting scp server ...", commands)
 			scp := new(SecureCopier)
 			if sreflect.SlideHasElem(commands, "-r") {
 				scp.IsRecursive = true
@@ -365,7 +514,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			if sreflect.SlideHasElem(commands, "-t") {
 				scp.dstFile = filepath.FromSlashSmart(commands[len(commands)-1], true)
 				if err := scpFromClient(scp); err != nil {
-					slogrus.Error("Error scpFromClient: ", err)
+					slogrus.ErrorS("Error scpFromClient: ", err)
 					// s.Stderr().Write([]byte(fmt.Sprintf("error scpFromClient: %s\n", err)))
 					exitStatus = 2
 				}
@@ -374,7 +523,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			if sreflect.SlideHasElem(commands, "-f") {
 				scp.srcFile = filepath.FromSlashSmart(commands[len(commands)-1], true)
 				if err := scpToClient(scp); err != nil {
-					slogrus.Error("Error scpToClient: ", err)
+					slogrus.ErrorS("Error scpToClient: ", err)
 					// s.Stderr().Write([]byte(fmt.Sprintf("error scpToClient: %s\n", err)))
 					exitStatus = 2
 				}
@@ -385,22 +534,25 @@ func sshSessionShellExecHandle(s gossh.Session) {
 		} else if commands[0] == "rsync" {
 			if _, err := exec.LookPath(commands[0]); err != nil || runtime.GOOS == "windows" { //not found scp, use buil-in
 				// if stats, err := rsyncssh.Rsyncssh(commands, s, s, s.Stderr()); err != nil {
-				// 	slogrus.Error("Error rsync: ", err)
+				// 	slogrus.ErrorS("Error rsync: ", err)
 				// 	exitStatus = 2
 				// } else {
-				// 	slogrus.Debugf("Total read: %s bytes, Total writeten: %d bytes, Total size of files: %d", stats.Read, stats.Written, stats.Size)
+				// 	slogrus.DebugfS("Total read: %s bytes, Total writeten: %d bytes, Total size of files: %d", stats.Read, stats.Written, stats.Size)
 				// }
 				exitStatus = 2
 				return
 			}
+		} else if runtime.GOOS == "windows" && len(commands) != 0 && commands[0] == `\t` {
+			commands = []string{shellbin, shellrunoption, "dir", "/b"}
+			commands = append(commands, commands[1:]...)
 		} else {
 			if _, err := exec.LookPath(commands[0]); err != nil {
-				slogrus.Debug("Run build-in command via shell")
+				slogrus.DebugS("Run build-in command via shell")
 				commands = append([]string{shellbin, shellrunoption}, commands...)
 			}
 		}
 
-		slogrus.Infof("exec start: %v", commands)
+		slogrus.InfofS("exec start: %v", commands)
 		cmd = exec.Command(commands[0], commands[1:]...)
 		cmd.Env = append(cmd.Env, sutils.PathGetEnvPathKey()+"="+sutils.PathGetEnvPathValue())
 		sexec.CmdHiddenConsole(cmd)
@@ -412,7 +564,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 
 				f, err := pty.Start(cmd) //start command via pty
 				if err != nil {
-					slogrus.Error("Can not start shell with tpy: ", err)
+					slogrus.ErrorS("Can not start shell with tpy: ", err)
 					exitStatus = 2
 					return
 				}
@@ -422,12 +574,12 @@ func sshSessionShellExecHandle(s gossh.Session) {
 					for win := range winCh {
 						pty.SetWinsizeTerminal(f, win.Width, win.Height)
 					}
-					slogrus.Info("Exit setWinsizeTerminal")
+					slogrus.InfoS("Exit setWinsizeTerminal")
 				}()
 				go sutils.TeeReadWriterOsFile(f, s.(io.ReadWriter), s.Stderr(), os.Stdout, nil)
 			} else {
 				if nil != sutils.TeeReadWriterCmd(cmd, s.(io.ReadWriter), s.Stderr(), os.Stdout, nil) { //alredy gorountine {
-					slogrus.Errorf("Can not start TeeReadWriterCmd: %v\n", err)
+					slogrus.ErrorfS("Can not start TeeReadWriterCmd: %v\n", err)
 					exitStatus = 2
 					return
 				}
@@ -446,6 +598,9 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				return
 			}
 			err = cmd.Start() //start command
+			if len(pre_login) != 0 {
+				io.WriteString(inputWriter, pre_login)
+			}
 			if err == nil {
 				go func() {
 					io.Copy(inputWriter, s)
@@ -628,6 +783,16 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 	server.Handler = sshSessionShellExecHandle
 	server.PasswordHandler = PasswordHandler
 	//	server.HostSigners = [](gossh.Signer)(gossh.NewSignerFromKey(""))
+	// server.ServerConfigCallback = func(ctx gossh.Context) (sshcfg *ssh.ServerConfig) {
+	// 	sshcfg = &ssh.ServerConfig{
+	// 		AcceptEnv: func(name string, value string) bool {
+	// 			return name == "LANG" || strings.HasPrefix(name, "LC_")
+	// 		},
+	// 	}
+	// 	// ssh
+	// 	return
+
+	// }
 	server.ConnCallback = func(ctx gossh.Context, conn net.Conn) net.Conn {
 		slogrus.PrintfS("New ssh connection from %s\n", conn.RemoteAddr().String())
 		//				slogrus.PrintfS("New ssh connection! %v\n", ctx)

@@ -39,7 +39,7 @@ func New(writer io.Writer) *Slog {
 	return slog
 }
 
-//new slog file with default stdout is os.Stderr
+// new slog file with default stdout is os.Stderr
 func NewLogFile(logPath string, log_level Level, pretty bool, diableStdout bool, logpath ...interface{}) *Slog {
 	slog := &Slog{
 		Logger: logrus.New(),
@@ -63,7 +63,7 @@ func Stack(skipn int) (stackResult string) {
 	return
 }
 
-//Number 11 may change
+// Number 11 may change
 func traceStackSkip(msg ...any) (retmsg []any) {
 	stackString := string(debug.Stack())
 	stackLines := strings.Split(stackString, "\n")
@@ -101,10 +101,14 @@ func TracefStack(format string, args ...interface{}) {
 	stdSlog.Tracef(format, args...)
 }
 
+var TracefStackS = TracefStack
+
 func TraceStack(msg ...any) {
 	nmsg := traceStackSkip(msg...)
 	stdSlog.Trace(nmsg...)
 }
+
+var TraceStackS = TraceStack
 
 func (slog *Slog) GetOldLogFiles() (retpaths []string) {
 	if !slog.initted {
@@ -116,12 +120,26 @@ func (slog *Slog) GetOldLogFiles() (retpaths []string) {
 	return
 }
 
+func (slog *Slog) Flush() {
+	if !slog.initted {
+		return
+	}
+	if lgr, ok := slog.rh.logWriter.(*LoggerRotate); ok {
+		lgr.buff.WaitUntilEmpty()
+		lgr.close()
+	}
+}
+
+func Flush() {
+	stdSlog.Flush()
+}
+
 func ColorStd() {
 	// colorable.NewColorableStderr().Write(p []byte)
 	colorable.EnableColorsStdout(nil)()
 }
 
-//logPath string, log_level logrus.Level, pretty bool)
+// logPath string, log_level logrus.Level, pretty bool)
 func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool, logpaths ...interface{}) {
 	logpath := ""
 	disableMsgJsonOpject := false
@@ -172,7 +190,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 			if outputIsOsFile && gosystem.IsTerminal(slogOutFile.Fd()) {
 				// fmt.Println("Is Terminal")
 
-				// if gosystem.IsTerminalWriter(stdSlog.Out) || (os.Getenv(DEBUGENVNAME) == "yes" && runtime.GOOS == "windows" || gosystem.IsTerminal(os.Stderr.Fd())) {
+				// if gosystem.IsTerminalWriter(stdSlog.Out) || (os.Getenv(DEBUGENVNAME) == "true" && runtime.GOOS == "windows" || gosystem.IsTerminal(os.Stderr.Fd())) {
 				// if gosystem.IsTerminalWriter(stdSlog.Out) {
 				// if (ok && (isatty.IsTerminal(fileprr.Fd()) || isatty.IsCygwinTerminal(fileprr.Fd()))) || (isatty.IsTerminal(stdoutFD) || isatty.IsCygwinTerminal(stdoutFD)) {
 				// fmt.Println("Is Terminal")
@@ -227,7 +245,7 @@ func GetStandardLogger() *Slog {
 	return stdSlog
 }
 
-//log for stdout and logfile,
+// log for stdout and logfile,
 func InitStandardLogger(log_level Level, pretty bool, diableStdout bool, logpaths ...interface{}) *Slog {
 	if stdSlog.initted {
 		return stdSlog
@@ -239,12 +257,12 @@ func InitStandardLogger(log_level Level, pretty bool, diableStdout bool, logpath
 	return stdSlog
 }
 
-//log for stdout without logfile, prety json
+// log for stdout without logfile, prety json
 func InitStandardLoggerWithDefault(log_level Level) *Slog {
 	return InitStandardLogger(log_level, true, false)
 }
 
-//log for stdout and logfile,
+// log for stdout and logfile,
 func GetOldLogFiles() (filesPath []string) {
 	return stdSlog.GetOldLogFiles()
 }
