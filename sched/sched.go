@@ -1,11 +1,11 @@
-//  func main() {
-//    jobFunc := func() {
-//	     log.Println("Time's up!")
-//    }
-//    sched.Every(5).ESeconds().Run(jobFunc)
-//    sched.Every().DDay().Run(jobFunc)
-//    sched.Every().ESunday().MWDAt("08:30").Run(jobFunc)
-//  }
+//	 func main() {
+//	   jobFunc := func() {
+//		     log.Println("Time's up!")
+//	   }
+//	   sched.Every(5).ESeconds().Run(jobFunc)
+//	   sched.Every().DDay().Run(jobFunc)
+//	   sched.Every().ESunday().MWDAt("08:30").Run(jobFunc)
+//	 }
 package sched
 
 import (
@@ -177,7 +177,7 @@ func (m *monthly) nextDurationWaitToRun() (du time.Duration, err error) {
 	return time.Until(date), nil
 }
 
-//config day of monthly. can run mutiple time
+// config day of monthly. can run mutiple time
 func (j *Job) MDay(d int) *Job {
 	if j.schedule != nil {
 		if m, ok := j.schedule.(*monthly); ok {
@@ -254,7 +254,7 @@ func (j *Job) At(hourTime string) *Job {
 	return j
 }
 
-//update every times daily
+// update every times daily
 func (j *Job) Every(times ...int) (units int, job *Job, err error) {
 	job = j
 	j.Lock()
@@ -311,7 +311,7 @@ func (j *Job) Run(fs ...func(*Job)) (*Job, error) {
 	j.Quit = make(chan bool, 1)
 	j.skipWait = make(chan bool, 1)
 	// Check for possible errors in scheduling
-	next, err = j.schedule.nextDurationWaitToRun()
+	// next, err = j.schedule.nextDurationWaitToRun()
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +348,7 @@ func (j *Job) SetFunc(f func(*Job)) *Job {
 	return j
 }
 
-//need call SetFunc before call this function
+// need call SetFunc before call this function
 func (j *Job) runCheck() error {
 	if j.fn == nil {
 		return fmt.Errorf("Need call SetFunc before call this function")
@@ -427,7 +427,7 @@ func parseTime(str string) (hour, min, sec int, err error) {
 	return
 }
 
-//Weekly schedule  (Sunday = 0, ...).
+// Weekly schedule  (Sunday = 0, ...).
 func (j *Job) dayOfWeek(d time.Weekday) *Job {
 	if j.schedule != nil {
 		j.err = errors.New("bad function chaining")

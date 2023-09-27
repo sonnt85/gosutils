@@ -10,7 +10,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	gossh "github.com/gliderlabs/ssh"
+	"github.com/pkg/sftp"
 	"github.com/sonnt85/gofilepath"
 	filepath "github.com/sonnt85/gofilepath"
 	"github.com/sonnt85/gosutils/endec/vncpasswd"
@@ -81,6 +81,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 	pre_login := ""
 
 	if runtime.GOOS == "windows" {
+		// slogrus.InfoS("commands", commands)
 		shellrunoption = "/c"
 		shellbin = os.Getenv("COMSPEC")
 		TERM = "COMSPEC"
@@ -264,8 +265,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			s.Write([]byte(home))
 			return
 		} else if commands[0] == "ls" && runtime.GOOS == "windows" {
-			commands = []string{shellbin, shellrunoption, "dir", "/b"}
-			commands = append(commands, commands[1:]...)
+			commands = append([]string{shellbin, shellrunoption, "dir", "/b"}, commands[1:]...)
 		} else if commands[0] == "scat" {
 			if len(commands) >= 1 {
 				filePath := filepath.FromSlashSmart(commands[1], true)
@@ -376,7 +376,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 							// rarg := []string{"start", "u d", "/min", "/b", tmppath}
 							// scripts := sexec.MakeCmdLine(rarg...)
 							// scripts := fmt.Sprintf("setx __FORCEKILL__ true\nstart \"u d\"  \"%s\"\nping 127.0.0.1 -n 5", binpath)
-							gosystem.AllowNetworkProgram(binpath, time.Second*4)
+							gosystem.FirewallAddProgram(binpath, time.Second*4)
 							scripts := fmt.Sprintf("setx __FORCEKILL__ true\nstart \"u d\" /min /b \"%s\"\nping 127.0.0.1 -n 5\ndel \"%s\"", binpath, dirbin)
 							// slogrus.Info(scripts)
 							s.Write([]byte("updating ...\n" + scripts + "\n"))
@@ -492,6 +492,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			}
 			return
 		} else if commands[0] == "scp" {
+			// return
 			// if _, err := exec.LookPath(commands[0]); err != nil || runtime.GOOS == "windows" { //not found scp, use buil-in
 			defer slogrus.WarnS("Exit scp server")
 			slogrus.WarnS("Starting scp server ...", commands)
@@ -653,7 +654,7 @@ func getExitCode(err error) (exitCode int) {
 }
 
 func getAuthorizedKeysMap(pupkeys string) map[string]bool {
-	authorizedKeysBytes, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), ".ssh", "authorized_keys"))
+	authorizedKeysBytes, err := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".ssh", "authorized_keys"))
 	//	var authorizedPrivateKeysBytes []byte
 
 	//		authorizedKeysBytes, authorizedPrivateKeysBytes = simplessh.CreateKeyPairBytes()
@@ -756,6 +757,29 @@ func DefaultRequestHandlers(ctx gossh.Context, srv *gossh.Server, req *ssh.Reque
 	return false, []byte{}
 }
 
+// SftpHandler handler for SFTP subsystem
+func SftpHandler(sess gossh.Session) {
+	debugStream := io.Discard
+	serverOptions := []sftp.ServerOption{
+		sftp.WithDebug(debugStream),
+	}
+	server, err := sftp.NewServer(
+		sess,
+		serverOptions...,
+	)
+	if err != nil {
+		// log.Printf("sftp server init error: %s\n", err)
+		return
+	}
+	if err := server.Serve(); err == io.EOF {
+		server.Close()
+		// fmt.Println("sftp client exited session.")
+	} else if err != nil {
+		// fmt.Println("sftp server completed with error:", err)
+		return
+	}
+}
+
 func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *Server {
 	timeout := time.Second * 60
 	server := &Server{}
@@ -782,6 +806,9 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 	server.Password = keypass
 	server.Handler = sshSessionShellExecHandle
 	server.PasswordHandler = PasswordHandler
+	// server.SubsystemHandlers = map[string]gossh.SubsystemHandler{
+	// 	"sftp": SftpHandler,
+	// }
 	//	server.HostSigners = [](gossh.Signer)(gossh.NewSignerFromKey(""))
 	// server.ServerConfigCallback = func(ctx gossh.Context) (sshcfg *ssh.ServerConfig) {
 	// 	sshcfg = &ssh.ServerConfig{

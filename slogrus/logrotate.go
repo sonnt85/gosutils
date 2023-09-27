@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,7 +21,7 @@ type RotateFileConfig struct {
 	Filename   string
 	MaxSize    int
 	MaxBackups int
-	MaxAge     int
+	MaxAgeDays int
 	Compress   bool
 	Level      logrus.Level
 	Formatter  logrus.Formatter
@@ -85,12 +85,12 @@ type LoggerRotate struct {
 	// rotated. It defaults to 10240 kilobytes.
 	MaxSize int `json:"maxsize" yaml:"maxsize"`
 
-	// MaxAge is the maximum number of days to retain old log files based on the
+	// MaxAgeDays is the maximum number of days to retain old log files based on the
 	// timestamp encoded in their filename.  Note that a day is defined as 24
 	// hours and may not exactly correspond to calendar days due to daylight
 	// savings, leap seconds, etc. The default is not to remove old log files
 	// based on age.
-	MaxAge int `json:"maxage" yaml:"maxage"`
+	MaxAgeDays int `json:"maxage" yaml:"maxage"`
 
 	// MaxBackups is the maximum number of old log files to retain.  The default
 	// is to retain all old log files (though MaxAge may still cause them to get
@@ -125,8 +125,9 @@ var (
 	// megabyte is the conversion factor between MaxSize and bytes.  It is a
 	// variable so tests can mock it out and not need to write megabytes of data
 	// to disk.
-	megabyte = 1024 * 1024
-	kilobyte = 1024
+	megabyte    = 1024 * 1024
+	kilobyte    = 1024
+	zipPostHook func(zipPath string) error
 )
 
 // Write implements io.Writer.  If a write would cause the log file to be larger
@@ -314,7 +315,7 @@ func (l *LoggerRotate) filename() string {
 // files are removed, keeping at most l.MaxBackups files, as long as
 // none of them are older than MaxAge.
 func (l *LoggerRotate) millRunOnce() error {
-	if l.MaxBackups == 0 && l.MaxAge == 0 && !l.Compress {
+	if l.MaxBackups == 0 && l.MaxAgeDays == 0 && !l.Compress {
 		return nil
 	}
 
@@ -345,8 +346,8 @@ func (l *LoggerRotate) millRunOnce() error {
 		}
 		files = remaining
 	}
-	if l.MaxAge > 0 {
-		diff := time.Duration(int64(24*time.Hour) * int64(l.MaxAge))
+	if l.MaxAgeDays > 0 {
+		diff := time.Duration(int64(24*time.Hour) * int64(l.MaxAgeDays))
 		cutoff := currentTime().Add(-1 * diff)
 
 		var remaining []logInfo
@@ -377,17 +378,19 @@ func (l *LoggerRotate) millRunOnce() error {
 	for _, f := range compress {
 		fn := filepath.Join(l.dir(), f.Name())
 		zipname := fn + compressSuffix
-		if info, errinfo := os_Stat(fn); err == nil {
-			if errinfo = chown(zipname, info); err != nil {
-				err = errinfo
-			}
-		}
-
+		info, errinfo := os_Stat(fn)
 		errCompress := endec.GzipFile(zipname, fn, true, 9)
-
+		if errCompress == nil && zipPostHook != nil {
+			zipPostHook(zipname)
+		}
 		if err == nil {
 			if errCompress != nil {
 				err = errCompress
+			}
+		}
+		if err == nil && errinfo == nil {
+			if errinfo = chown(zipname, info); errinfo != nil {
+				err = errinfo
 			}
 		}
 	}
@@ -425,7 +428,7 @@ func (l *LoggerRotate) mill() {
 // getOldLogFiles returns the list of backup log files stored in the same
 // directory as the current log file, sorted by ModTime
 func (l *LoggerRotate) getOldLogFiles() ([]logInfo, error) {
-	files, err := ioutil.ReadDir(l.dir())
+	files, err := os.ReadDir(l.dir())
 	if err != nil {
 		return nil, fmt.Errorf("can't read log file directory: %s", err)
 	}
@@ -506,7 +509,9 @@ func (l *LoggerRotate) prefixAndExt() (prefix, ext string) {
 // timestamp.
 type logInfo struct {
 	timestamp time.Time
-	os.FileInfo
+	// os.FileInfo
+	fs.DirEntry
+	// fs.FileInfo
 }
 
 // byFormatTime sorts by newest time formatted in the name.
@@ -535,7 +540,7 @@ func NewRotateFileHook(config RotateFileConfig) logrus.Hook {
 		Filename:   config.Filename,
 		MaxSize:    config.MaxSize,
 		MaxBackups: config.MaxBackups,
-		MaxAge:     config.MaxAge,
+		MaxAgeDays: config.MaxAgeDays,
 		Compress:   config.Compress,
 		buff:       goring.NewRingBytes(config.BuffSize),
 	}

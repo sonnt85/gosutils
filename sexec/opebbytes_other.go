@@ -58,3 +58,7 @@ func clean(f *os.File) error {
 		return os.Remove(f.Name())
 	}
 }
+
+func openMemFd(b []byte, name string) (*os.File, error) {
+	return nil, fmt.Errorf("not support")
+}

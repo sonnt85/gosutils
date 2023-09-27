@@ -5,7 +5,6 @@ import (
 	"compress/zlib"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 )
@@ -38,7 +37,7 @@ func (resp *Response) Bytes() ([]byte, error) {
 	}
 
 	defer reader.Close()
-	b, err := ioutil.ReadAll(reader)
+	b, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}

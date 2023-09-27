@@ -63,8 +63,19 @@ func ExecCommandCtxScriptEnvTimeout(ctxc context.Context, scriptbin, script stri
 	CmdHiddenConsole(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if !strings.HasSuffix(script, "\n") {
-		script += "\n"
+	GOOS := runtime.GOOS
+
+	var NewLine = "\n"
+	if GOOS == "windows" {
+		NewLine = "\r\n"
+	} else if GOOS == "darwin" {
+		NewLine = "\r"
+	}
+	if !strings.HasSuffix(script, "\n") || !strings.HasSuffix(script, "\r") {
+		script += NewLine
+	}
+	if GOOS == "windows" && filepath.Base(scriptbin) == "cmd.exe" {
+		script += "exit" + NewLine
 	}
 	cmd.Stdin = bytes.NewBuffer([]byte(script))
 	cmd.Env = EnrovimentMergeWithCurrentEnv(moreenvs)
@@ -78,7 +89,6 @@ func ExecCommandCtxScriptEnvTimeout(ctxc context.Context, scriptbin, script stri
 	} else {
 		c := make(chan error, 1)
 
-		// Thực hiện cmd.Wait() trong một goroutine riêng
 		go func() {
 			c <- cmd.Wait()
 		}()
@@ -90,7 +100,6 @@ func ExecCommandCtxScriptEnvTimeout(ctxc context.Context, scriptbin, script stri
 			needKill = true
 		}
 	}
-
 	if needKill {
 		killChilds(cmd.Process.Pid)
 		cmd.Process.Kill()
@@ -99,14 +108,19 @@ func ExecCommandCtxScriptEnvTimeout(ctxc context.Context, scriptbin, script stri
 	if ctx.Err() == context.DeadlineExceeded {
 		err = fmt.Errorf("124:Timeout")
 	}
-
+	if err != nil {
+		errstr := err.Error()
+		if strings.HasPrefix(errstr, "wait") && strings.HasSuffix(errstr, ": no child processes") {
+			err = nil
+		}
+	}
 	if err != nil {
 		errstr := fmt.Sprintf("error code: [%s]", err)
 		if stdout.Len() != 0 {
-			errstr = fmt.Sprintf("%s,stdout: [%s]", errstr, stdout.String())
+			errstr = fmt.Sprintf("%s, stdout: [%s]", errstr, stdout.String())
 		}
 		if stderr.Len() != 0 {
-			errstr = fmt.Sprintf("%s,stderr: [%s]", errstr, stderr.String())
+			errstr = fmt.Sprintf("%s, stderr: [%s]", errstr, stderr.String())
 		}
 		err = fmt.Errorf(errstr)
 	}
@@ -143,6 +157,7 @@ func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, moreenvs map[st
 		return stdOut, stdErr, err
 	}
 	needKill := false
+
 	if ctxc == nil {
 		err = cmd.Wait()
 	} else {
@@ -160,7 +175,6 @@ func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, moreenvs map[st
 			needKill = true
 		}
 	}
-
 	if needKill {
 		killChilds(cmd.Process.Pid)
 		cmd.Process.Kill()
@@ -169,14 +183,19 @@ func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, moreenvs map[st
 	if ctx.Err() == context.DeadlineExceeded {
 		err = fmt.Errorf("124:Timeout")
 	}
-
+	if err != nil {
+		errstr := err.Error()
+		if strings.HasPrefix(errstr, "wait") && strings.HasSuffix(errstr, ": no child processes") {
+			err = nil
+		}
+	}
 	if err != nil {
 		errstr := fmt.Sprintf("error code: [%s]", err)
 		if stdout.Len() != 0 {
-			errstr = fmt.Sprintf("%s,stdout: [%s]", errstr, stdout.String())
+			errstr = fmt.Sprintf("%s, stdout: [%s]", errstr, stdout.String())
 		}
 		if stderr.Len() != 0 {
-			errstr = fmt.Sprintf("%s,stderr: [%s]", errstr, stderr.String())
+			errstr = fmt.Sprintf("%s, stderr: [%s]", errstr, stderr.String())
 		}
 		err = fmt.Errorf(errstr)
 	}

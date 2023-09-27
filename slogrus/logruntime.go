@@ -39,6 +39,7 @@ type FormatterRuntime struct {
 	// When true, only base name of the file will be tagged to fields
 	BaseNameOnly bool
 
+	globalFields map[string]interface{}
 	// TraceFlag    bool
 }
 
@@ -63,6 +64,9 @@ func (f *FormatterRuntime) Format(entry *logrus.Entry) ([]byte, error) {
 		} else {
 			data[FileKey] = file
 		}
+	}
+	for k, v := range f.globalFields {
+		data[k] = v
 	}
 	for k, v := range entry.Data {
 		data[k] = v

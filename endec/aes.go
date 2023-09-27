@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -95,12 +96,17 @@ func AESCBCEncrypt(key, plaintext []byte, ivs ...[]byte) (result []byte, err err
 
 	// Pad the plaintext to a multiple of the block size
 	plaintext = Pkcs7Padding(plaintext, aes.BlockSize)
-
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("recovered: %v", r)
+		}
+	}()
 	// Create a new CBC mode block cipher using the AES cipher block and IV
 	mode := cipher.NewCBCEncrypter(block, iv)
 
 	// Encrypt the padded plaintext
 	ciphertext := make([]byte, len(plaintext))
+
 	mode.CryptBlocks(ciphertext, plaintext)
 
 	// Append the IV to the ciphertext and return the result as base64
@@ -143,6 +149,11 @@ func AESCBCDecrypt(key, ciphertext []byte, ivs ...[]byte) (plaintext []byte, err
 	}
 
 	// Create a new CBC mode block cipher using the AES cipher block and IV
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("recovered: %v", r)
+		}
+	}()
 	mode := cipher.NewCBCDecrypter(block, iv)
 
 	// Decrypt the ciphertext

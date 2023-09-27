@@ -6,6 +6,9 @@ import (
 	"unicode"
 )
 
+// StructUniqueByFieldName removes duplicate elements from a slice of structs based on a specified field's value.
+// It returns a new slice containing only unique elements based on the specified field's value.
+// The function expects a slice of structs and the field name (exported) as arguments.
 func StructUniqueByFieldName(structSlice interface{}, fieldName string) (retlist []interface{}) {
 	if len(fieldName) != 0 && unicode.IsLower([]rune(fieldName)[0]) {
 		return
@@ -69,7 +72,16 @@ func ReflectStructMethod(Iface interface{}, MethodName string) error {
 	return nil
 }
 
-func SlideHasElem(s interface{}, elem interface{}) bool {
+func SlideHasElem[T comparable](s []T, elem T) bool {
+	for _, v := range s {
+		if v == elem {
+			return true
+		}
+	}
+	return false
+}
+
+func _SlideHasElem(s interface{}, elem interface{}) bool {
 	arrV := reflect.ValueOf(s)
 
 	if arrV.Kind() == reflect.Slice || arrV.Kind() == reflect.Array {
@@ -89,7 +101,7 @@ func SlideHasElem(s interface{}, elem interface{}) bool {
 // Reflect if an interface is either a struct or a pointer to a struct
 // and has the defined member field, if error is nil, the given
 // FieldName exists and is accessible with reflect.
-func ReflectStructField(Iface interface{}, FieldName string) error {
+func CheckStructFieldExistence(Iface interface{}, FieldName string) error {
 	ValueIface := reflect.ValueOf(Iface)
 
 	// Check if the passed interface is a pointer

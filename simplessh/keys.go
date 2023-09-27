@@ -6,12 +6,11 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"golang.org/x/crypto/ssh"
 	"io"
-	"io/ioutil"
 	"os"
-)
 
+	"golang.org/x/crypto/ssh"
+)
 
 // RFC 4254 7.1
 type channelForwardMsg struct {
@@ -99,7 +98,7 @@ func CreateKeyPairBytes() (publicKey, privateKey []byte) {
 // LoadPrivateKey loads a file at the provided path and attempts to load it into an ssh.Signer that can be used for SSH servers
 func LoadPrivateKey(filePath string) (ssh.Signer, error) {
 
-	privateBytes, err := ioutil.ReadFile(filePath)
+	privateBytes, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}

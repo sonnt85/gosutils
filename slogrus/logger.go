@@ -23,6 +23,8 @@ type Logger interface {
 	Trace(v ...interface{})
 	Debug(v ...interface{})
 	Print(v ...interface{})
+	// WriteStd(format string, v ...interface{})
+	// WritefStd(v ...interface{})
 	Info(v ...interface{})
 	Warn(v ...interface{})
 	Error(v ...interface{})
@@ -67,10 +69,14 @@ var levelOfDefaultLogger Level //level for default logger
 // SetLevel sets the level of logs below which logs will not be output.
 // The default log level is LevelTrace.
 
+var __parselevel func(string) (Level, error)
+
 // ParseLevel takes a string level and returns the Logrus log level constant.
 func ParseLevel(lvl string) (Level, error) {
 	if level, err := logrus.ParseLevel(lvl); err == nil {
 		return Level{level}, nil
+	} else if __parselevel != nil {
+		return __parselevel(lvl)
 	} else {
 		return LevelPanic, err
 	}
@@ -103,6 +109,22 @@ var WarnS = Warn
 
 func Print(v ...interface{}) {
 	_defaultLogger.Print(v...)
+}
+
+func WriteStd(v ...interface{}) {
+	if slog, ok := _defaultLogger.(*Slog); ok {
+        slog.WriteStd(v...)
+    } else {
+        _defaultLogger.Print(v...)
+    }
+}
+
+func WritefStd(format string, v ...interface{}) {
+	if slog, ok := _defaultLogger.(*Slog); ok {
+        slog.WritefStd(format, v...)
+    } else {
+        _defaultLogger.Printf(format, v...)
+    }
 }
 
 var PrintS = Print

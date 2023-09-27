@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -16,7 +15,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 // Client wraps an SSH Client
@@ -42,7 +41,7 @@ func CopyReadWriters(a, b io.ReadWriter, closeFunc func()) {
 func ClientAuthMethod(file string) (ssh.AuthMethod, error) {
 	var buffer []byte
 	if _, err := os.Stat(file); err == nil {
-		buffer, err = ioutil.ReadFile(file) //private key
+		buffer, err = os.ReadFile(file) //private key
 		if err != nil {
 			//			logger.Println(fmt.Sprintf("Cannot read SSH public key file %s, use password", file))
 			return nil, err
@@ -271,16 +270,16 @@ func (c *Client) RunCommand(cmd string) (err error) {
 	if tertype == "" {
 		tertype = "xterm-256color"
 	}
-	if terminal.IsTerminal(fileDescriptor) {
+	if term.IsTerminal(fileDescriptor) {
 
-		originalState, err := terminal.MakeRaw(fileDescriptor)
+		originalState, err := term.MakeRaw(fileDescriptor)
 		if err != nil {
 			return err
 		}
 
-		defer terminal.Restore(fileDescriptor, originalState)
+		defer term.Restore(fileDescriptor, originalState)
 
-		termWidth, termHeight, err := terminal.GetSize(fileDescriptor)
+		termWidth, termHeight, err := term.GetSize(fileDescriptor)
 		if err != nil {
 			return err
 		}

@@ -40,6 +40,10 @@ func GetDefaultLogger() Logger {
 }
 
 func init() {
+	Init()
+}
+
+func Init() {
 	_defaultLogger = GetStandardLogger()
 	// _defaultLogger = New(os.Stderr)
 }

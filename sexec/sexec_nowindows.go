@@ -22,10 +22,11 @@ func syscallExec(binary string, argv []string, envv []string) (err error) {
 }
 
 func cmdHiddenConsole(cmd *exec.Cmd) {
-	// return
-	if runtime.GOOS == "darwin" {
+	return
+	if !IsConsoleExecutable(cmd.Path) || runtime.GOOS == "darwin" {
 		return
 	}
+
 	xterm := os.Getenv("TERM")
 	if len(xterm) == 0 {
 		xterm = "xterm-256color" //xterm-256color xterm

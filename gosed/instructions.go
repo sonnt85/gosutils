@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 )
@@ -299,7 +298,7 @@ func cmd_newInserter(text string) instruction {
 // The 'r' command is basically and 'a\' with the contents
 // of a filsvm. I implement it literally that way below.
 func cmd_newReader(filename string) (instruction, error) {
-	bytes, err := ioutil.ReadFile(filename)
+	bytes, err := os.ReadFile(filename)
 	return cmd_newAppender(string(bytes)), err
 }
 

@@ -2,6 +2,7 @@ package vncproxy
 
 import (
 	"net"
+	"os"
 	"time"
 
 	"github.com/sonnt85/gosutils/bufcopy"
@@ -24,12 +25,32 @@ type Peer struct {
 	ConnectAt time.Time
 }
 
+func isNewUnixSocket(addr string) bool {
+	fileInfo, err := os.Stat(addr)
+	if err != nil {
+		return false // Assume addr is a TCP socket address
+	}
+	return fileInfo.Mode()&os.ModeSocket != 0
+}
+
 func NewPeer(ws *websocket.Conn, addr, token string) (*Peer, error) {
 	if ws == nil {
 		return nil, errors.New("websocket connection is nil")
 	}
-
-	c, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	var c net.Conn
+	var err error
+	if isNewUnixSocket(addr) {
+		c, err = net.DialTimeout("unix", addr, 5*time.Second)
+		if err != nil {
+			return nil, errors.Wrap(err, "cannot connect to unix vnc backend")
+		}
+	} else {
+		c, err = net.DialTimeout("tcp", addr, 5*time.Second)
+		if err != nil {
+			return nil, errors.Wrap(err, "cannot connect to vnc backend")
+		}
+	}
+	// c, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot connect to vnc backend")
 	}

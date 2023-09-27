@@ -63,7 +63,7 @@ func NewEmbedSub() *embedSub {
 func (f *embedSub) fullName(op string, name string) (string, error) {
 	name = strings.TrimPrefix(name, "./")
 	name = strings.TrimPrefix(name, "/")
-	if !fs.ValidPath(name) {
+	if name != "" && !fs.ValidPath(name) {
 		return "", &fs.PathError{Op: op, Path: name, Err: errors.New("invalid name")}
 	}
 	return path.Join(f.dir, name), nil
@@ -87,6 +87,7 @@ func (esub *embedSub) ReadDir(name string) ([]fs.DirEntry, error) {
 	}
 	return esub.efs.ReadDir(fullname)
 }
+
 func (esub *embedSub) ReadFile(name string) ([]byte, error) {
 	fullname, err := esub.fullName("readfile", name)
 	if err != nil {
@@ -100,7 +101,7 @@ func (esub *embedSub) Sub(dir string) (subem *embedSub, err error) {
 	if !fs.ValidPath(dir) {
 		return nil, &fs.PathError{Op: "sub", Path: dir, Err: errors.New("invalid name")}
 	}
-	if dir == "." {
+	if dir == "." || dir == "./" {
 		return esub, nil
 	}
 	if _, err := esub.Open(dir); err != nil {
@@ -115,7 +116,7 @@ func (esub *embedSub) SubSet(dir string) (err error) {
 	if !fs.ValidPath(dir) {
 		return &fs.PathError{Op: "sub", Path: dir, Err: errors.New("invalid name")}
 	}
-	if dir == "." {
+	if dir == "." || dir == "./" {
 		return nil
 	}
 	esub.dir = dir
@@ -142,9 +143,10 @@ func NewHttpSystemFS(efs *embed.FS, rootDir string, sub ...string) (*HttpSystemF
 	hfs.embedWrap.efs = efs
 	hfs.rootDir = rootDir
 	if len(sub) != 0 {
-		return hfs.Sub(sub[0])
+		return hfs.Sub(path.Join(rootDir, sub[0]))
 	}
-	return &hfs, nil
+	return hfs.Sub(rootDir)
+	// return &hfs, nil
 }
 
 func (fsh *HttpSystemFS) RootDir() string {
@@ -203,9 +205,9 @@ func (fsh *HttpSystemFS) FindFilesMatchPathFromRoot(rootSearch, pattern string, 
 	if matchFunc == nil {
 		return
 	}
-	if len(rootSearch) == 0 || rootSearch == "/" || rootSearch == "." {
-		rootSearch = fsh.rootDir
-	}
+	// if len(rootSearch) == 0 || rootSearch == "/" || rootSearch == "." || rootSearch == "./" {
+	// 	rootSearch = fsh.rootDir
+	// }
 	// rootSearch := gofilepath.FromSlash(root1)
 	if finfo, err := fsh.Stat(rootSearch); err == nil {
 		if !finfo.IsDir() { //is file
@@ -349,8 +351,9 @@ func (d *statDirEntry) Type() fs.FileMode          { return d.info.Mode().Type()
 func (d *statDirEntry) Info() (fs.FileInfo, error) { return d.info, nil }
 
 func (fsh *HttpSystemFS) Stat(root string) (finfo fs.FileInfo, err error) {
-	if len(root) == 0 || root == "/" || root == "." {
-		root = fsh.rootDir
+	if len(root) == 0 || root == "/" || root == "." || root == "./" {
+		// root = fsh.rootDir
+		root = "."
 	}
 	file, err := fsh.embedSub.Open(root)
 	if err != nil {
@@ -417,6 +420,7 @@ func (fsh *HttpSystemFS) Copy(toDirPath, fromFshPath string, mods ...fs.FileMode
 		Mkdir: func(srcPath string, srcFileInfo fs.FileMode) error {
 			if gosystem.PathIsExist(srcPath) {
 				os.Chmod(srcPath, 0755)
+				// os.Chmod(srcPath, srcFileInfo)
 				return nil
 			}
 			return os.Mkdir(srcPath, srcFileInfo)

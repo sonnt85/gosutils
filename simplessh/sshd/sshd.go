@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"log"
+	"os"
 
 	"github.com/sonnt85/gosutils/simplessh"
 
@@ -11,9 +12,9 @@ import (
 
 func main() {
 
-	privateBytes, err := ioutil.ReadFile("id_rsa")
+	privateBytes, err := os.ReadFile("id_rsa")
 	if err != nil {
-		log.Fatal("Failed to load private key (./id_rsa)")
+		logl("Failed to load private key (./id_rsa)")
 	}
 
 	private, err := ssh.ParsePrivateKey(privateBytes)

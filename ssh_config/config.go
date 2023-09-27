@@ -8,7 +8,7 @@
 // the host name to match on ("example.com"), and the second argument is the key
 // you want to retrieve ("Port"). The keywords are case insensitive.
 //
-// 		port := ssh_config.Get("myhost", "Port")
+//	port := ssh_config.Get("myhost", "Port")
 //
 // You can also manipulate an SSH config file and then print it or write it back
 // to disk.
@@ -34,7 +34,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	osuser "os/user"
 	"path/filepath"
@@ -196,7 +195,7 @@ func parseFile(filename string) (*Config, error) {
 }
 
 func parseWithDepth(filename string, depth uint8) (*Config, error) {
-	b, err := ioutil.ReadFile(filename)
+	b, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +210,7 @@ func isSystem(filename string) bool {
 // Decode reads r into a Config, or returns an error if r could not be parsed as
 // an SSH config file.
 func Decode(r io.Reader) (*Config, error) {
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}

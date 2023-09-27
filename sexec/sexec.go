@@ -5,8 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
+
+	"github.com/shirou/gopsutil/process"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/sonnt85/gosutils/sutils"
@@ -189,4 +192,97 @@ func EnrovimentMergeWithCurrentEnv(envMap map[string]string) (senv []string) {
 		senv = append(senv, fmt.Sprintf("%s=%s", key, value))
 	}
 	return
+}
+
+func IsConsoleExecutable(path string) bool {
+	consoleBasenames := []string{
+		"setx",
+		"cmd",        // Windows cmd
+		"powershell", // Windows PowerShell
+		"bash",       // Bash on Linux/Unix
+		"sh",         // Sh on Linux/Unix
+		"zsh",        // Zsh on Linux/Unix
+		"fish",       // Fish Shell on Linux/Unix
+		"python",     // Python interpreter
+		"ruby",       // Ruby interpreter
+		"perl",       // Perl interpreter
+		"node",       // Node.js interpreter
+		"php",        // PHP interpreter
+		"lua",        // Lua interpreter
+		"jshell",     // Java Shell (JShell)
+		"openvpn-gui",
+	}
+	if runtime.GOOS != "darwin" {
+		return true
+	}
+	base := strings.ToLower(filepath.Base(path))
+	baseWithoutExt := strings.TrimSuffix(base, filepath.Ext(base))
+
+	for _, consoleBasename := range consoleBasenames {
+		if baseWithoutExt == consoleBasename {
+			return true
+		}
+	}
+
+	return false
+}
+
+func Open(b []byte, progname string) (f *os.File, err error) {
+	return open(b, progname)
+}
+
+func OpenMemFd(b []byte, name string) (*os.File, error) {
+	return openMemFd(b, name)
+}
+
+func Processes(names ...string) (ps []*process.Process, err error) {
+	// func Pgrep(name string, isFullname ...bool) error {
+	ps, err = process.Processes()
+	// if len(names) == 0 {
+	// 	return
+	// }
+
+	if err != nil {
+		return
+	}
+	var pname string
+	// found := false
+	retps := make([]*process.Process, 0)
+	for _, p := range ps {
+		pname, err = p.Name()
+
+		if len(names) == 0 || (len(names) == 1 && (names[0] == "*" || names[0] == "")) || (err == nil && sutils.SlideHasElementInStrings(names, pname)) {
+			retps = append(retps, p)
+		}
+	}
+	return retps, nil
+}
+
+func PgrepWithEnv(names string, key, val string) (ps []*process.Process) {
+	if pst, err := Processes(names); err == nil {
+		ps = make([]*process.Process, 0)
+		env := fmt.Sprintf("%s=%s", key, val)
+		for _, p := range pst {
+			if nvs, e := p.Environ(); e == nil {
+				for _, v := range nvs {
+					if v == env || key == "*" || (val == "*" && strings.HasPrefix(v, fmt.Sprintf("%s=", key))) {
+						ps = append(ps, p)
+						break
+					}
+				}
+			}
+		}
+	}
+	return
+}
+
+func Pgrep(names ...string) (ps []*process.Process) {
+	ps, _ = Processes(names...)
+	return
+}
+
+func Command(name string, arg ...string) *exec.Cmd {
+	cmd := exec.Command(name, arg...)
+	CmdHiddenConsole(cmd)
+	return cmd
 }

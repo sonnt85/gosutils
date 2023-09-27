@@ -51,7 +51,7 @@ func (cj job) nextMatches() (t time.Time) {
 }
 
 type Jobs struct {
-	tiker time.Ticker
+	// tiker time.Ticker
 	sync.RWMutex
 	J *[]job
 }
@@ -108,8 +108,9 @@ func processJobs() {
 	for {
 		now := time.Now()
 		jobs.RLock()
-		for _, j := range *jobs.J {
+		for _, jTemp := range *jobs.J {
 			// execute all our cron tasks asynchronously
+			j := jTemp
 			if j.Matches(now) && !j.IsRunning {
 				j.IsRunning = true
 				go func() {

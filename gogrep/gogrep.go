@@ -3,7 +3,6 @@ package gogrep
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
@@ -49,7 +48,7 @@ func GrepFileLines(file, pat string, numberlineMatch int, literalFlags ...bool) 
 		pat = regexp.QuoteMeta(pat)
 	}
 
-	allbytes, err := ioutil.ReadFile(file)
+	allbytes, err := os.ReadFile(file)
 	if err != nil {
 		return retarray, err
 	}

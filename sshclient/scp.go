@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
+	log "github.com/sonnt85/gosutils/slogrus"
 	"github.com/sonnt85/gosutils/sutils"
 	"github.com/sonnt85/gosystem"
 	"golang.org/x/crypto/ssh"
@@ -60,7 +60,7 @@ func (scp *SecureCopier) processDir(procWriter io.Writer, srcFilePath string, sr
 			err = scp.processDir(procWriter, filepath.Join(srcFilePath, fi.Name()), fi)
 			if err != nil {
 				if scp.ignErr {
-					log.Warnf("scp processDir error [local ignore]: %v", err)
+					log.WarnfS("scp processDir error [local ignore]: %v", err)
 				} else {
 					return err
 				}
@@ -69,7 +69,7 @@ func (scp *SecureCopier) processDir(procWriter io.Writer, srcFilePath string, sr
 			err = scp.sendFile(procWriter, filepath.Join(srcFilePath, fi.Name()), fi)
 			if err != nil {
 				if scp.ignErr {
-					log.Warnf("scp sendFile error [local ignore]: %v", err)
+					log.WarnfS("scp sendFile error [local ignore]: %v", err)
 				} else {
 					return err
 				}
@@ -84,7 +84,7 @@ func (scp *SecureCopier) processDir(procWriter io.Writer, srcFilePath string, sr
 func (scp *SecureCopier) sendEndDir(procWriter io.Writer) error {
 	header := "E\n"
 	if scp.IsVerbose {
-		log.Printf("Sending end dir: %s", header)
+		log.PrintfS("Sending end dir: %s", header)
 	}
 	_, err := procWriter.Write([]byte(header))
 	return err
@@ -94,7 +94,7 @@ func (scp *SecureCopier) sendDir(procWriter io.Writer, srcPath string, srcFileIn
 	mode := uint32(srcFileInfo.Mode().Perm())
 	header := fmt.Sprintf("D%04o 0 %s\n", mode, filepath.Base(srcPath))
 	if scp.IsVerbose {
-		log.Infoln("Sending Dir header : %s", header)
+		log.InfofS("Sending Dir header : %s", header)
 	}
 	_, err := procWriter.Write([]byte(header))
 	return err
@@ -111,7 +111,7 @@ func (scp *SecureCopier) sendFile(procWriter io.Writer, srcPath string, srcFileI
 	size := srcFileInfo.Size()
 	header := fmt.Sprintf("C%04o %d %s\n", mode, size, filepath.Base(srcPath))
 	if scp.IsVerbose {
-		log.Println("Sending File header: %s", header)
+		log.InfofS("Sending File header: %s", header)
 	}
 	pb := sutils.NewProgressBar(srcPath, size)
 	pb.Update(0)
@@ -132,29 +132,29 @@ func (scp *SecureCopier) sendFile(procWriter io.Writer, srcPath string, srcFileI
 
 	err = fileReader.Close()
 	if scp.IsVerbose {
-		log.Println("Sent file plus null-byte.")
+		log.InfoS("Sent file plus null-byte.")
 	}
 	pb.Update(size)
 	fmt.Println()
 
 	if err != nil {
-		log.Errorln(err.Error())
+		log.ErrorS(err.Error())
 	}
 	return err
 }
 
-//to-scp [send scp -t ]
+// to-scp [send scp -t ]
 func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 
 	srcFileInfo, err := os.Stat(scp.srcFile)
 	if err != nil {
-		log.Errorln("Could not stat source file " + scp.srcFile)
+		log.ErrorS("Could not stat source file ", scp.srcFile)
 		return err
 	}
 	if err != nil {
 		return err
 	} else if scp.IsVerbose {
-		log.Infoln("Got session")
+		log.InfoS("Got session")
 	}
 	defer session.Close()
 	ce := make(chan error)
@@ -165,7 +165,7 @@ func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 	go func() {
 		procWriter, err := session.StdinPipe()
 		if err != nil {
-			log.Errorln(err.Error())
+			log.ErrorS(err.Error())
 			ce <- err
 			return
 		}
@@ -175,9 +175,9 @@ func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 				err = scp.processDir(procWriter, scp.srcFile, srcFileInfo)
 				if err != nil {
 					if scp.ignErr {
-						log.Warnf("scp error [ignore]: %v", err)
+						log.WarnfS("scp error [ignore]: %v", err)
 					} else {
-						log.Errorln(err.Error())
+						log.ErrorS(err.Error())
 						ce <- err
 						return
 					}
@@ -185,19 +185,19 @@ func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 			} else {
 				err = scp.sendFile(procWriter, scp.srcFile, srcFileInfo)
 				if err != nil {
-					log.Errorln(err.Error())
+					log.ErrorS(err.Error())
 					ce <- err
 					return
 				}
 			}
 		} else {
 			if srcFileInfo.IsDir() {
-				ce <- errors.New("Error: Not a regular file")
+				ce <- errors.New("error: Not a regular file")
 				return
 			} else {
 				err = scp.sendFile(procWriter, scp.srcFile, srcFileInfo)
 				if err != nil {
-					log.Errorln(err.Error())
+					log.ErrorS(err.Error())
 					ce <- err
 					return
 				}
@@ -205,7 +205,7 @@ func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 		}
 		err = procWriter.Close()
 		if err != nil {
-			log.Errorln(err.Error())
+			log.ErrorS(err.Error())
 			ce <- err
 			return
 		}
@@ -214,7 +214,7 @@ func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 		select {
 		case err, ok := <-ce:
 			if err != nil { //ce is closed
-				log.Errorln("Scp to server error:", err, ok)
+				log.ErrorS("Scp to server error:", err, ok)
 			} else {
 				session.Close()
 			}
@@ -230,7 +230,7 @@ func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 	}
 	err = session.Run("scp " + remoteOpts + " " + scp.dstFile)
 	if err != nil {
-		log.Errorln("Failed to run remote scp: " + err.Error())
+		log.ErrorS("Failed to run remote scp: ", err.Error())
 	}
 	close(ce)
 	return err
@@ -252,30 +252,30 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 
 	//from-scp
 	if scp.IsVerbose {
-		log.Println("Got session")
+		log.InfoS("Got session")
 	}
 	//	defer session.Close()
 	ce := make(chan error)
 	go func() {
 		cw, err := session.StdinPipe()
 		if err != nil {
-			log.Errorln(err.Error())
+			log.ErrorS(err.Error())
 			ce <- err
 			return
 		}
 		defer cw.Close()
 		r, err := session.StdoutPipe()
 		if err != nil {
-			log.Errorln("session stdout err: " + err.Error() + " continue anyway")
+			log.ErrorS("session stdout err: " + err.Error() + " continue anyway")
 			ce <- err
 			return
 		}
 		if scp.IsVerbose {
-			log.Println("Sending null byte")
+			log.InfoS("Sending null byte")
 		}
 		err = sendByte(cw, 0)
 		if err != nil {
-			log.Errorln("Write error: " + err.Error())
+			log.ErrorS("Write error: " + err.Error())
 			ce <- err
 			return
 		}
@@ -293,64 +293,63 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 				return
 			}
 			cmdArr := make([]byte, nb)
-			log.Warnf("[%s] Reading stdin of scp secssion [ max %d bytes ]: ....", desc, nb)
+			log.WarnfS("[%s] Reading stdin of scp secssion [ max %d bytes ]: ....", desc, nb)
 
 			n, err := r.Read(cmdArr)
 			if err != nil {
-				log.Errorln("Error reading standard input:", err)
+				log.ErrorS("Error reading standard input:", err)
 			} else {
-				log.Printf("Dump data stdin of scp secssion [%d/%d]:\n%s", n, nb, hex.Dump(cmdArr))
+				log.PrintfS("Dump data stdin of scp secssion [%d/%d]:\n%s", n, nb, hex.Dump(cmdArr))
 			}
-			return
 		}
 		//	scploop:
 		for more {
 			cntloop = cntloop + 1
 
 			cmdArr := make([]byte, 1)
-			//			log.Errorln("\nSCPloop times: ", cntloop)
+			//			log.ErrorS("\nSCPloop times: ", cntloop)
 			n, err := r.Read(cmdArr)
 
 			if err != nil {
-				//				log.Errorf("r.Read(cmdArr): %v", err)
+				//				log.ErrorfS("r.Read(cmdArr): %v", err)
 				if err == io.EOF {
 					//no problem.
 					if scp.IsVerbose {
-						log.Println("Received EOF from remote server")
+						log.InfoS("Received EOF from remote server")
 					}
 				} else {
-					log.Errorln("Error reading standard input:", err)
+					log.ErrorS("Error reading standard input:", err)
 					ce <- err
 				}
 				return
 			}
 			if n < 1 {
-				log.Errorln("Error reading next byte from standard input")
-				ce <- errors.New("Error reading next byte from standard input")
+				log.ErrorS("Error reading next byte from standard input")
+				ce <- errors.New("error reading next byte from standard input")
 				return
 			}
 
 		from0x1:
 			cmd := cmdArr[0]
 			if scp.IsVerbose {
-				log.Printf("Sink cmd: %s (%v)\n", string(cmd), cmd)
+				log.PrintfS("Sink cmd: %s (%v)\n", string(cmd), cmd)
 			}
 			switch cmd {
 			case 0x0:
 				//continue
 				if scp.IsVerbose {
-					log.Println("Received OK \n")
+					log.InfoS("Received OK \n")
 				}
 			case 0xA: //newline
 				//0xA command: end?
 
 				if scp.IsVerbose {
-					log.Print("Received All-done [0xA command]\n")
+					log.PrintS("Received All-done [0xA command]")
 				}
 
 				err = sendByte(cw, 0)
 				if err != nil {
-					log.Errorln("Write error: " + err.Error())
+					log.ErrorS("Write error: " + err.Error())
 					ce <- err
 				}
 
@@ -359,7 +358,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 				//				if true && cntloop == 100 {
 				//					cmdArrs := make([]byte, 128)
 				//					n, _ := r.Read(cmdArrs)
-				//					log.Warnf("Debug data at loop %d [%d]:\n%s", cntloop, n, hex.Dump(cmdArrs))
+				//					log.WarnfS("Debug data at loop %d [%d]:\n%s", cntloop, n, hex.Dump(cmdArrs))
 				//				}
 				cmdFull := ""
 				if jumfrom0x1 {
@@ -372,10 +371,10 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 						if err == io.EOF {
 							//no problem.
 							if scp.IsVerbose {
-								log.Infoln("Received EOF from remote server")
+								log.InfoS("Received EOF from remote server")
 							}
 						} else {
-							log.Errorln("Error reading standard input:", err)
+							log.ErrorS("Error reading standard input:", err)
 							ce <- err
 						}
 
@@ -385,9 +384,9 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 
 					cmdFull = scanner.Text()
 				}
-				//				log.Infof("scanner.Bytes:\n%s", hex.Dump([]byte(cmdFull)))
+				//				log.InfofS("scanner.Bytes:\n%s", hex.Dump([]byte(cmdFull)))
 				if scp.IsVerbose {
-					log.Infof("Sink Details [data only]: %v\n", cmdFull)
+					log.InfofS("Sink Details [data only]: %v\n", cmdFull)
 				}
 				//remainder, split by spaces
 				parts := strings.SplitN(cmdFull, " ", 3)
@@ -395,7 +394,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 				//				re.Regexp() //compile
 				//				parts := re.FindStringSubmatch(cmdFull)[1:]
 				//				parts := re.SubexpNames()
-				//				log.Println(parts)
+				//				log.InfoS(parts)
 				switch cmd {
 				case 'E':
 					//				if cntloop == 6 {
@@ -404,12 +403,12 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 					//E command: go back out of dir
 					dstDir = filepath.Dir(dstDir)
 					if scp.IsVerbose {
-						//					log.Infoln("Entering directory: ", thisDstFile)
-						log.Println("Received End-Dir, go back out of dir to: ", dstDir)
+						//					log.InfoS("Entering directory: ", thisDstFile)
+						log.InfoS("Received End-Dir, go back out of dir to: ", dstDir)
 					}
 					err = sendByte(cw, 0)
 					if err != nil {
-						log.Errorf("Write error: %s", err.Error())
+						log.ErrorfS("Write error: %s", err.Error())
 						ce <- err
 						return
 					}
@@ -417,21 +416,21 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 					if scp.ignErr {
 						//						err = sendByte(cw, 0)
 						//						if err != nil {
-						//							log.Errorln("Write error: " + err.Error())
+						//							log.ErrorS("Write error: " + err.Error())
 						//							ce <- err
 						//						}
 						fmt.Println()
-						log.Errorf("Received error message from server for 0x1[ignore]: %v\n", cmdFull[1:])
+						log.ErrorfS("Received error message from server for 0x1[ignore]: %v\n", cmdFull[1:])
 						scanner.Scan()
 						err := scanner.Err()
 						if err != nil {
 							if err == io.EOF {
 								//no problem.
 								if scp.IsVerbose {
-									log.Infoln("Received EOF from remote server")
+									log.InfoS("Received EOF from remote server")
 								}
 							} else {
-								log.Errorln("Error reading standard input:", err)
+								log.ErrorS("Error reading standard input:", err)
 								ce <- err
 							}
 
@@ -443,7 +442,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 						goto from0x1
 						//						continue
 					} else {
-						log.Errorf("Received error message: %v\n", cmdFull[1:])
+						log.ErrorfS("Received error message: %v\n", cmdFull[1:])
 						ce <- errors.New(cmdFull[1:])
 						return
 					}
@@ -451,20 +450,20 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 					mode, err := strconv.ParseInt(parts[0], 8, 32)
 
 					if err != nil {
-						log.Errorln("Format error: " + err.Error())
+						log.ErrorS("Format error: " + err.Error())
 						ce <- err
 						return
 					}
 					sizeUint, err := strconv.ParseUint(parts[1], 10, 64)
 					size := int64(sizeUint)
 					if err != nil {
-						log.Errorln("Format error: " + err.Error())
+						log.ErrorS("Format error: " + err.Error())
 						ce <- err
 						return
 					}
 					rcvFilename := parts[2]
 					if scp.IsVerbose {
-						log.Infof("Mode: %04o, size: %d, filename: %s\n", mode, size, rcvFilename)
+						log.InfofS("Mode: %04o, size: %d, filename: %s\n", mode, size, rcvFilename)
 					}
 					var filename string
 					//use the specified filename from the destination (only for top-level item)
@@ -475,7 +474,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 					}
 					err = sendByte(cw, 0)
 					if err != nil {
-						log.Errorln("Send error: " + err.Error())
+						log.ErrorS("Send error: " + err.Error())
 						ce <- err
 						return
 					}
@@ -485,7 +484,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 						tmpDstFile := sutils.TempFileCreateInNewTemDir(filename)
 						defer os.RemoveAll(filepath.Dir(tmpDstFile))
 						if scp.IsVerbose {
-							log.Println("Creating destination file: ", thisDstFile)
+							log.InfoS("Creating destination file: ", thisDstFile)
 						}
 						tot := int64(0)
 						pb := sutils.NewProgressBar(filename, size)
@@ -495,7 +494,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 						//						fw, err := os.OpenFile(thisDstFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(mode))
 						if err != nil {
 							ce <- err
-							log.Errorln("File creation error: " + err.Error())
+							log.ErrorS("File creation error: " + err.Error())
 							return
 						}
 
@@ -511,7 +510,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 							b := make([]byte, bufferSize)
 							n, err = r.Read(b)
 							if err != nil {
-								log.Errorln("Read error: " + err.Error())
+								log.ErrorS("Read error: " + err.Error())
 								ce <- err
 								return
 							}
@@ -519,7 +518,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 							//write to file
 							_, err = fw.Write(b[:n])
 							if err != nil {
-								log.Errorln("Write error: " + err.Error())
+								log.ErrorS("Write error: " + err.Error())
 								ce <- err
 								return
 							}
@@ -531,7 +530,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 						}
 						err = fw.Close()
 						if err != nil {
-							log.Errorln(err.Error())
+							log.ErrorS(err.Error())
 							ce <- err
 							return
 						}
@@ -540,7 +539,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 						gosystem.Chmod(thisDstFile, fs.FileMode(mode)) //Need test
 
 						if err != nil {
-							log.Errorln(err.Error())
+							log.ErrorS(err.Error())
 							ce <- err
 							return
 						}
@@ -551,7 +550,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 						nb := make([]byte, 1)
 						_, err = r.Read(nb)
 						if err != nil {
-							log.Errorln(err.Error())
+							log.ErrorS(err.Error())
 							ce <- err
 							return
 						}
@@ -559,7 +558,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 						//send null-byte back
 						_, err = cw.Write([]byte{0})
 						if err != nil {
-							log.Errorln("Send null-byte error: " + err.Error())
+							log.ErrorS("Send null-byte error: " + err.Error())
 							ce <- err
 							return
 						}
@@ -571,26 +570,26 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 						fileMode := os.FileMode(uint32(mode))
 						err = os.MkdirAll(thisDstFile, fileMode)
 						if err != nil {
-							log.Errorln("Mkdir error: " + err.Error())
+							log.ErrorS("Mkdir error: " + err.Error())
 							ce <- err
 							return
 						} else {
 							if scp.IsVerbose {
-								log.Infoln("Entering directory: ", thisDstFile)
+								log.InfoS("Entering directory: ", thisDstFile)
 							}
 						}
 						dstDir = thisDstFile
 					}
 				}
 			default:
-				log.Warnf("Command '%v' NOT implementented\n", cmd)
+				log.WarnfS("Command '%v' NOT implementented\n", cmd)
 				return
 			}
 			first = false
 		}
 		err = cw.Close()
 		if err != nil {
-			log.Errorln("error closing process writer: ", err.Error())
+			log.ErrorS("error closing process writer: ", err.Error())
 			ce <- err
 			return
 		}
@@ -600,7 +599,7 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 		select {
 		case err, ok := <-ce:
 			if err != nil { //ce is closed
-				log.Errorln("Scp from remote error:", err, ok)
+				log.ErrorS("Scp from remote error:", err, ok)
 			} else {
 				session.Close()
 			}
@@ -618,9 +617,9 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 	err = session.Run("scp " + remoteOpts + " " + scp.srcFile)
 	if err != nil {
 		fmt.Println()
-		log.Errorln("Failed to run remote scp: " + err.Error())
+		log.ErrorS("Failed to run remote scp: " + err.Error())
 	} else {
-		log.Println("Done scp")
+		log.InfoS("Done scp")
 	}
 	close(ce)
 	return err

@@ -1,8 +1,8 @@
 package slogrus
 
 import (
+	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -23,6 +23,18 @@ type Slog struct {
 	*logrus.Logger
 	rh      *RotateFileHook
 	initted bool
+}
+
+type Entry struct {
+	*logrus.Entry
+}
+
+func (slog Slog) WriteStd(v ...interface{}) {
+	slog.Out.Write([]byte(fmt.Sprint(v...)))
+}
+
+func (slog Slog) WritefStd(format string, v ...interface{}) {
+	slog.Out.Write([]byte(fmt.Sprintf(format, v...)))
 }
 
 var stdSlog = &Slog{
@@ -121,7 +133,7 @@ func (slog *Slog) GetOldLogFiles() (retpaths []string) {
 }
 
 func (slog *Slog) Flush() {
-	if !slog.initted {
+	if !slog.initted || slog.rh == nil {
 		return
 	}
 	if lgr, ok := slog.rh.logWriter.(*LoggerRotate); ok {
@@ -154,7 +166,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 	slog.initted = true
 	slogOutFile, outputIsOsFile := slog.Out.(*os.File)
 	if diableStdout {
-		slog.SetOutput(ioutil.Discard)
+		slog.SetOutput(io.Discard)
 		if stdSlog == slog { //auto disable os.Stdout if is standard log
 			os.Stdout, _ = os.Open(os.DevNull)
 			os.Stderr, _ = os.Open(os.DevNull)
@@ -204,7 +216,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 				slog.SetFormatter(&logStdStandardRuntimeFormatter)
 			} else { //disable output if is not terminal
 				// fmt.Println("Not is Terminal")
-				slog.SetOutput(ioutil.Discard)
+				slog.SetOutput(io.Discard)
 			}
 		}
 	} else {
@@ -230,7 +242,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 			Filename:   logpath,
 			MaxSize:    1024, // kbytes
 			MaxBackups: 32,
-			MaxAge:     31,              //days
+			MaxAgeDays: 31,              //days
 			Level:      log_level.Level, //for file
 			Formatter:  logRuntimeFormatter,
 			Compress:   true,
@@ -246,6 +258,7 @@ func GetStandardLogger() *Slog {
 }
 
 // log for stdout and logfile,
+// Logpaths are logpath and disable parser json msg
 func InitStandardLogger(log_level Level, pretty bool, diableStdout bool, logpaths ...interface{}) *Slog {
 	if stdSlog.initted {
 		return stdSlog
@@ -265,4 +278,29 @@ func InitStandardLoggerWithDefault(log_level Level) *Slog {
 // log for stdout and logfile,
 func GetOldLogFiles() (filesPath []string) {
 	return stdSlog.GetOldLogFiles()
+}
+
+func RotateSetHookCompress(h func(zipPath string) error) {
+	zipPostHook = h
+}
+
+func WithFields(fields map[string]interface{}) *Entry {
+	return &Entry{
+		stdSlog.Logger.WithFields(logrus.Fields(fields)),
+	}
+}
+
+func UpdateFields(fields map[string]interface{}) {
+	if stdSlog.Formatter != nil {
+		if frt, ok := stdSlog.Formatter.(*FormatterRuntime); ok {
+			frt.globalFields = fields
+		}
+	}
+}
+func ResetFields() {
+	if stdSlog.Formatter != nil {
+		if frt, ok := stdSlog.Formatter.(*FormatterRuntime); ok {
+			frt.globalFields = map[string]interface{}{}
+		}
+	}
 }

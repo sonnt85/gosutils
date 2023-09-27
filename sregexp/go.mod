@@ -1,3 +1,3 @@
 module github.com/sonnt85/gosutils/sregexp
 
-go 1.18
+go 1.21.0

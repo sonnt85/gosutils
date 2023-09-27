@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 
@@ -54,6 +55,12 @@ func execCommandShellElevatedEnvTimeout1(name string, showCmd int32, moreenvs ma
 	} else {
 		err = cmd.Wait()
 	}
+	if err != nil {
+		errstr := err.Error()
+		if strings.HasPrefix(errstr, "wait") && strings.HasSuffix(errstr, ": no child processes") {
+			err = nil
+		}
+	}
 	return stdout.Bytes(), stderr.Bytes(), err
 	// return ExecCommand(exe, args...)
 }
@@ -92,7 +99,6 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, name string, showC
 	defer tty.Close()
 	go sutils.TeeReadWriterOsFile(tty, os.Stdin, &stderr, &stdout, nil)
 	// go sutils.CopyReadWriters(tty, os.Stdin, nil)
-
 	if timeout != 0 {
 		ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
 		defer cancelFn()
@@ -112,10 +118,10 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, name string, showC
 	if err != nil {
 		errstr := fmt.Sprintf("error code: [%s]", err)
 		if stdout.Len() != 0 {
-			errstr = fmt.Sprintf("%s,stdout: [%s]", errstr, stdout.String())
+			errstr = fmt.Sprintf("%s, stdout: [%s]", errstr, stdout.String())
 		}
 		if stderr.Len() != 0 {
-			errstr = fmt.Sprintf("%s,stderr: [%s]", errstr, stderr.String())
+			errstr = fmt.Sprintf("%s, stderr: [%s]", errstr, stderr.String())
 		}
 		err = fmt.Errorf(errstr)
 	}

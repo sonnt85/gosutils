@@ -8,11 +8,12 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 )
 
-//darwin no check
+// darwin no check
 func execCommandShellElevatedEnvTimeout(ctxc context.Context, name string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
 	var stdout, stderr bytes.Buffer
 	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
@@ -34,7 +35,6 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, name string, showC
 		return stdOut, stdErr, err
 	}
 	needKill := false
-
 	if ctxc == nil {
 		err = cmd.Wait()
 	} else {
@@ -51,7 +51,6 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, name string, showC
 			needKill = true
 		}
 	}
-
 	if needKill {
 		killChilds(cmd.Process.Pid)
 		cmd.Process.Kill()
@@ -60,14 +59,19 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, name string, showC
 	if ctx.Err() == context.DeadlineExceeded {
 		err = fmt.Errorf("124:Timeout")
 	}
-
+	if err != nil {
+		errstr := err.Error()
+		if strings.HasPrefix(errstr, "wait") && strings.HasSuffix(errstr, ": no child processes") {
+			err = nil
+		}
+	}
 	if err != nil {
 		errstr := fmt.Sprintf("error code: [%s]", err)
 		if stdout.Len() != 0 {
-			errstr = fmt.Sprintf("%s,stdout: [%s]", errstr, stdout.String())
+			errstr = fmt.Sprintf("%s, stdout: [%s]", errstr, stdout.String())
 		}
 		if stderr.Len() != 0 {
-			errstr = fmt.Sprintf("%s,stderr: [%s]", errstr, stderr.String())
+			errstr = fmt.Sprintf("%s, stderr: [%s]", errstr, stderr.String())
 		}
 		err = fmt.Errorf(errstr)
 	}

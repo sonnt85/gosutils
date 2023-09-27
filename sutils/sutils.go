@@ -81,11 +81,11 @@ import (
 //		}
 //	}
 var (
-	GOOS       = runtime.GOARCH
-	AppName    string
-	AppVersion string
-	NEWLINE    = "\n"
-	Ipv4Regex  = `([0-9]+\.){3}[0-9]+`
+	GOOS = runtime.GOARCH
+	// AppName    string
+	// AppVersion string
+	NEWLINE   = "\n"
+	Ipv4Regex = `([0-9]+\.){3}[0-9]+`
 )
 
 // //progressbar
@@ -484,6 +484,23 @@ func PATHHasFile(filePath, PATH string) bool {
 		}
 	}
 	return false
+}
+
+func PathCleanup(path string) string {
+	pahSeparator := string(os.PathListSeparator)
+	paths := strings.Split(path, pahSeparator)
+	uniquePaths := make(map[string]bool)
+
+	var result []string
+
+	for _, p := range paths {
+		if _, ok := uniquePaths[p]; !ok && PathIsExist(p) {
+			uniquePaths[p] = true
+			result = append(result, p)
+		}
+	}
+
+	return strings.Join(result, pahSeparator)
 }
 
 func PathGetEnvPathValue() string {
@@ -1072,6 +1089,10 @@ func JsonSet(jsonstring string, elementPath string, val any) (string, error) {
 	return sjson.Set(jsonstring, elementPath, val)
 }
 
+func JsonDelete(jsonstring string, elementPath string) (string, error) {
+	return sjson.Delete(jsonstring, elementPath)
+}
+
 func JsonStringFindElements(strjson *string, pathSearch string, valueflag ...bool) (map[string]string, error) {
 	var retmap = map[string]string{}
 	doc, err := jsonquery.Parse(strings.NewReader(*strjson))
@@ -1437,6 +1458,10 @@ func StringDecrypt(encryptedString string, keyString string) (reterr error, decr
 	nonceSize := aesGCM.NonceSize()
 
 	//Extract the nonce from the encrypted data
+	if nonceSize > len(enc) {
+		reterr = fmt.Errorf("slice bounds out of range [%d %d]", nonceSize, len(enc))
+		return
+	}
 	nonce, ciphertext := enc[:nonceSize], enc[nonceSize:]
 
 	//Decrypt the data

@@ -18,7 +18,6 @@ import (
 
 	"context"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -245,13 +244,13 @@ func NewRunOnceBytesPort(port int, LoopCall bool, exebytes []byte) *RunOnce {
 func (gVar *RunOnce) GenerateCmd() (err error) {
 	if gVar.runtype == RUNBYTES {
 
-		rootdir, err := ioutil.TempDir("", "system")
+		rootdir, err := os.MkdirTemp("", "system")
 		if err != nil {
 			return err
 		}
 
 		filePath := filepath.Join(rootdir, gVar.Exename)
-		err = ioutil.WriteFile(filePath, gVar.exebytes, 0755)
+		err = os.WriteFile(filePath, gVar.exebytes, 0755)
 
 		if err != nil {
 			log.Errorf("Can not create new file to run: %v", err)

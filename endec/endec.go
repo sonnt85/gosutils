@@ -8,13 +8,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
+	"path/filepath"
 	"strings"
 
 	//	"encoding/base64"
 	"encoding/base64"
-	"io/ioutil"
 
 	//	"fmt"
 	"io"
@@ -79,6 +80,29 @@ func EncryptBytesToFile(filename interface{}, data []byte, passphrase []byte) (e
 	return err
 }
 
+func EncryptFileWithRandomPassword(pathfile string, dstpathprefixs ...string) error {
+	data, err := os.ReadFile(pathfile)
+	if err != nil {
+		return err
+	}
+	passphrase := GenerateRandomAssci(16, []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"))
+	pathprefix := pathfile
+	if len(dstpathprefixs) != 0 {
+		pathprefix = dstpathprefixs[0]
+	}
+	pathprefix = fmt.Sprintf("%s-%s", pathprefix, passphrase)
+	err = EncryptBytesToFile(pathprefix, data, []byte(passphrase))
+	return err
+}
+
+func DecryptFileWithPasswordInFileToBytes(pathfile string) (data []byte, err error) {
+	bname := filepath.Base(pathfile)
+	if _, passwd, found := strings.Cut(bname, "-"); found {
+		data, err = DecryptFileToBytes(pathfile, []byte(passwd))
+	}
+	return
+}
+
 func DecryptBytes(data []byte, passphrase []byte) (retbytes []byte, err error) {
 	key := MD5Bytes(passphrase)
 	block, err := aes.NewCipher(key)
@@ -126,7 +150,7 @@ func DecryptFileToBytes(filename interface{}, passphrase []byte) (data []byte, e
 		data, err = io.ReadAll(v)
 		// f.Truncate(0)
 	case string:
-		data, err = ioutil.ReadFile(v)
+		data, err = os.ReadFile(v)
 	default:
 		return data, errors.New("param is of unknown type")
 	}
@@ -139,7 +163,7 @@ func DecryptFileToBytes(filename interface{}, passphrase []byte) (data []byte, e
 
 // decryp file filename to byte array use hash
 func DecryptFileToFile(inputFile, outputFile string, passphrase []byte) (err error) {
-	data, err := ioutil.ReadFile(inputFile)
+	data, err := os.ReadFile(inputFile)
 	if err != nil {
 		return err
 	}
@@ -152,7 +176,7 @@ func DecryptFileToFile(inputFile, outputFile string, passphrase []byte) (err err
 	if err != nil {
 		return err
 	}
-	err = ioutil.WriteFile(outputFile, data, inputInfo.Mode().Perm())
+	err = os.WriteFile(outputFile, data, inputInfo.Mode().Perm())
 	return
 }
 
@@ -211,7 +235,7 @@ func StringUnzip(input string) (data []byte, err error) {
 	}
 	rdata := bytes.NewReader(data)
 	if r, err := gzip.NewReader(rdata); err == nil {
-		data, err := ioutil.ReadAll(r)
+		data, err := io.ReadAll(r)
 		return data, err
 	} else {
 		return data, err
@@ -375,7 +399,7 @@ func GzipFile(dst, src interface{}, removeSrc bool, compressLevel int, password 
 		hash := sha256.Sum256(password[0])
 		key = hash[:]
 	}
-	clv := 9
+	clv := gzip.BestCompression
 	if compressLevel <= gzip.BestCompression && compressLevel >= gzip.HuffmanOnly {
 		clv = compressLevel
 	}
@@ -441,10 +465,14 @@ func GenerateRandomBytes(n int) ([]byte, error) {
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
-func GenerateRandomAssci(n int) string {
+func GenerateRandomAssci(n int, runs ...[]rune) string {
 	b := make([]rune, n)
+	chars := letterRunes
+	if len(runs) != 0 {
+		chars = runs[0]
+	}
 	for i := range b {
-		b[i] = letterRunes[RandRangeInterger(0, len(letterRunes)-1)]
+		b[i] = chars[RandRangeInterger(0, len(chars)-1)]
 	}
 	return string(b)
 }
