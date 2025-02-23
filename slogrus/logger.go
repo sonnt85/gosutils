@@ -113,20 +113,23 @@ func Print(v ...interface{}) {
 
 func WriteStd(v ...interface{}) {
 	if slog, ok := _defaultLogger.(*Slog); ok {
-        slog.WriteStd(v...)
-    } else {
-        _defaultLogger.Print(v...)
-    }
+		slog.WriteStd(v...)
+	} else {
+		_defaultLogger.Print(v...)
+	}
 }
+
+var WriteStdS = WriteStd
 
 func WritefStd(format string, v ...interface{}) {
 	if slog, ok := _defaultLogger.(*Slog); ok {
-        slog.WritefStd(format, v...)
-    } else {
-        _defaultLogger.Printf(format, v...)
-    }
+		slog.WritefStd(format, v...)
+	} else {
+		_defaultLogger.Printf(format, v...)
+	}
 }
 
+var WritefStdS = WritefStd
 var PrintS = Print
 
 // Info calls the default logger's Info method.
@@ -171,7 +174,7 @@ func Warnf(format string, v ...interface{}) {
 
 var WarnfS = Warnf
 
-var Warning = Warnf
+var Warning = Warn
 var WarningS = Warning
 
 // Infof calls the default logger's Infof method.

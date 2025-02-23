@@ -10,13 +10,19 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
+
+	gofilepath "github.com/sonnt85/gofilepath"
+	"golang.org/x/crypto/ssh"
+
 	"strconv"
 	"strings"
 
+	"github.com/sonnt85/gosutils/bufcopy"
 	log "github.com/sonnt85/gosutils/slogrus"
+	"github.com/sonnt85/gosutils/sreflect"
 	"github.com/sonnt85/gosutils/sutils"
 	"github.com/sonnt85/gosystem"
-	"golang.org/x/crypto/ssh"
 	//	"strings"
 )
 
@@ -30,6 +36,14 @@ type SecureCopier struct {
 	ignErr  bool
 	srcFile string
 	dstFile string
+}
+
+// *ssh.Session
+type ScpSession interface {
+	WriteCloser() (io.WriteCloser, error)
+	Reader() (io.Reader, error)
+	Run(string) error
+	Close() error
 }
 
 func sendByte(w io.Writer, val byte) error {
@@ -120,7 +134,8 @@ func (scp *SecureCopier) sendFile(procWriter io.Writer, srcPath string, srcFileI
 		return err
 	}
 	//TODO buffering
-	_, err = io.Copy(procWriter, fileReader)
+
+	_, err = bufcopy.Copy(procWriter, fileReader)
 	if err != nil {
 		return err
 	}
@@ -144,32 +159,42 @@ func (scp *SecureCopier) sendFile(procWriter io.Writer, srcPath string, srcFileI
 }
 
 // to-scp [send scp -t ]
-func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
+func scpToRemote(scp *SecureCopier, session ScpSession) error {
 
 	srcFileInfo, err := os.Stat(scp.srcFile)
 	if err != nil {
 		log.ErrorS("Could not stat source file ", scp.srcFile)
 		return err
 	}
-	if err != nil {
-		return err
-	} else if scp.IsVerbose {
+
+	if scp.IsVerbose {
 		log.InfoS("Got session")
 	}
 	defer session.Close()
-	ce := make(chan error)
+	ce := make(chan error, 1)
 	if scp.dstFile == "" {
 		scp.dstFile = filepath.Base(scp.srcFile)
 		//scp.dstFile = "."
 	}
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	go func() {
-		procWriter, err := session.StdinPipe()
+		defer wg.Done()
+		procWriter, err := session.WriteCloser()
 		if err != nil {
 			log.ErrorS(err.Error())
 			ce <- err
 			return
 		}
-		defer procWriter.Close()
+		defer func() {
+			err = procWriter.Close()
+			if err != nil {
+				log.ErrorS(err.Error())
+				ce <- err
+				return
+			}
+		}()
+
 		if scp.IsRecursive {
 			if srcFileInfo.IsDir() {
 				err = scp.processDir(procWriter, scp.srcFile, srcFileInfo)
@@ -203,23 +228,17 @@ func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 				}
 			}
 		}
-		err = procWriter.Close()
-		if err != nil {
-			log.ErrorS(err.Error())
-			ce <- err
-			return
-		}
 	}()
-	go func() {
-		select {
-		case err, ok := <-ce:
-			if err != nil { //ce is closed
-				log.ErrorS("Scp to server error:", err, ok)
-			} else {
-				session.Close()
-			}
-		}
-	}()
+	// go func() {
+	// 	select {
+	// 	case err, ok := <-ce:
+	// 		if err != nil { //ce is closed
+	// 			log.ErrorS("Scp to server error:", err, ok)
+	// 		} else {
+	// 			session.Close()
+	// 		}
+	// 	}
+	// }()
 
 	remoteOpts := "-t"
 	if scp.IsQuiet {
@@ -232,12 +251,38 @@ func scpToRemote(scp *SecureCopier, session *ssh.Session) error {
 	if err != nil {
 		log.ErrorS("Failed to run remote scp: ", err.Error())
 	}
+	wg.Wait()
+	// time.Sleep(time.Second * 10)
 	close(ce)
 	return err
 }
 
+type ScpSessionFromsshSecsion struct {
+	*ssh.Session
+}
+
+func (s *ScpSessionFromsshSecsion) Run(cmd string) error {
+	return s.Session.Run(cmd)
+}
+
+func (s *ScpSessionFromsshSecsion) Close() error {
+	return s.Session.Close()
+}
+
+func (s *ScpSessionFromsshSecsion) WriteCloser() (io.WriteCloser, error) {
+	return s.Session.StdinPipe()
+}
+
+func (s *ScpSessionFromsshSecsion) Reader() (io.Reader, error) {
+	return s.Session.StdoutPipe()
+}
+
+func NewScpSessionFromsshSecsion(session *ssh.Session) ScpSession {
+	return &ScpSessionFromsshSecsion{session}
+}
+
 // scp FROM remote source[ send scp -f]
-func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
+func scpFromRemote(scp *SecureCopier, session ScpSession) error {
 	dstDir := scp.dstFile
 	var useSpecifiedFilename bool
 	var err error
@@ -255,16 +300,21 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 		log.InfoS("Got session")
 	}
 	//	defer session.Close()
-	ce := make(chan error)
+	ce := make(chan error, 1)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	go func() {
-		cw, err := session.StdinPipe()
+		defer wg.Done()
+		cw, err := session.WriteCloser()
 		if err != nil {
 			log.ErrorS(err.Error())
 			ce <- err
 			return
 		}
-		defer cw.Close()
-		r, err := session.StdoutPipe()
+		defer func() {
+			cw.Close()
+		}()
+		r, err := session.Reader()
 		if err != nil {
 			log.ErrorS("session stdout err: " + err.Error() + " continue anyway")
 			ce <- err
@@ -595,16 +645,16 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 		}
 	}()
 
-	go func() {
-		select {
-		case err, ok := <-ce:
-			if err != nil { //ce is closed
-				log.ErrorS("Scp from remote error:", err, ok)
-			} else {
-				session.Close()
-			}
-		}
-	}()
+	// go func() {
+	// 	select {
+	// 	case err, ok := <-ce:
+	// 		if err != nil { //ce is closed
+	// 			log.ErrorS("Scp from remote error:", err, ok)
+	// 		} else {
+	// 			session.Close()
+	// 		}
+	// 	}
+	// }()
 	//qprf
 	remoteOpts := "-f"
 	if scp.IsQuiet {
@@ -621,7 +671,70 @@ func scpFromRemote(scp *SecureCopier, session *ssh.Session) error {
 	} else {
 		log.InfoS("Done scp")
 	}
+	wg.Wait()
 	close(ce)
 	return err
 
+}
+
+type ScpSessionFromReadWriteCloser struct {
+	wc  io.WriteCloser
+	r   io.Reader
+	run func(string) error
+}
+
+func (s *ScpSessionFromReadWriteCloser) WriteCloser() (io.WriteCloser, error) {
+	return s.wc, nil
+}
+
+func (s *ScpSessionFromReadWriteCloser) Reader() (io.Reader, error) {
+	return s.r, nil
+}
+
+func (s *ScpSessionFromReadWriteCloser) Run(cmd string) error {
+	if s.run == nil {
+		return nil
+	}
+	return s.run(cmd)
+}
+
+func (s *ScpSessionFromReadWriteCloser) Close() error {
+	return nil
+	// return s.wc.Close()
+}
+
+func NewScpSessionFromReadWriteCloser(wc io.WriteCloser, r io.Reader, run func(string) error) ScpSession {
+	return &ScpSessionFromReadWriteCloser{wc, r, run}
+}
+
+func SCP(inPipe io.WriteCloser, outPipe io.Reader, run func(string) error, srcFile string, dstFile string, commands ...string) (err error) {
+	scp := &SecureCopier{
+		srcFile: gofilepath.FromSlashSmart(srcFile, true),
+		dstFile: gofilepath.FromSlashSmart(dstFile, true),
+	}
+	if sreflect.SlideHasElem(commands, "-r") || strings.HasSuffix(srcFile, string(os.PathSeparator)) {
+		scp.IsRecursive = true
+	} else {
+		scp.IsRecursive = false
+	}
+
+	if sreflect.SlideHasElem(commands, "-q") {
+		scp.IsQuiet = true
+	} else {
+		scp.IsQuiet = false
+	}
+	scp.IsVerbose = !scp.IsQuiet
+	scp.ignErr = false
+	session := NewScpSessionFromReadWriteCloser(inPipe, outPipe, run)
+	if sreflect.SlideHasElem(commands, "-t") {
+		// scp.dstFile = gofilepath.FromSlashSmart(commands[len(commands)-1], true)
+		err = scpToRemote(scp, session)
+		return
+	}
+	if sreflect.SlideHasElem(commands, "-f") {
+		// scp.srcFile = gofilepath.FromSlashSmart(commands[len(commands)-1], true)
+		err = scpFromRemote(scp, session)
+		return
+	}
+	return nil
 }

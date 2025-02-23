@@ -14,6 +14,8 @@ import (
 	"io"
 )
 
+var ERR_CIPHERTEXT_TOO_SHORT = errors.New("ciphertext too short")
+
 // AESGCMEncrypt encrypts plaintext with the given key using AES in GCM mode.
 func AESGCMEncrypt(key, plaintext []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
@@ -59,7 +61,7 @@ func AESGCMDecrypt(key, ciphertext []byte) ([]byte, error) {
 
 	size := gcm.NonceSize()
 	if len(ciphertext)-size <= 0 {
-		return nil, errors.New("ciphertext is empty")
+		return nil, ERR_CIPHERTEXT_TOO_SHORT // errors.New("ciphertext is empty")
 	}
 
 	nonce := ciphertext[:size]
@@ -186,9 +188,9 @@ func AESCBCDecryptFromBase64(key []byte, ciphertext string, ivs ...[]byte) ([]by
 
 func Pkcs7Padding(input []byte, blockSize int) []byte {
 	paddingSize := blockSize - len(input)%blockSize
-	// if paddingSize == blockSize {
-	// 	return input
-	// }
+	if paddingSize == blockSize {
+		return input
+	}
 	padding := make([]byte, paddingSize)
 	for i := range padding {
 		padding[i] = byte(paddingSize)
@@ -196,12 +198,16 @@ func Pkcs7Padding(input []byte, blockSize int) []byte {
 	return append(input, padding...)
 }
 
-func Pkcs7Unpadding(input []byte, blockSize ...int) []byte {
+func Pkcs7Unpadding(input []byte, blockSizes ...int) []byte {
 	if len(input) == 0 {
 		return []byte{}
 	}
+	blockSize := uint16(256)
+	if len(blockSizes) != 0 {
+		blockSize = uint16(blockSizes[0])
+	}
 	padding := input[len(input)-1]
-	if (len(input) - int(padding)) >= 0 {
+	if (uint16(padding) < blockSize) && (len(input) > int(padding)) {
 		for i := len(input) - int(padding); i < len(input); i++ {
 			if input[i] != padding {
 				// return []byte{}
@@ -212,4 +218,32 @@ func Pkcs7Unpadding(input []byte, blockSize ...int) []byte {
 	} else {
 		return input
 	}
+}
+
+func PLPPadding(data []byte, blocksize int) []byte {
+	// Kiểm tra độ dài blocksize
+	if blocksize < 1 {
+		return nil
+	}
+	P := (len(data) % blocksize)
+	paddingLen := blocksize - P
+	if P == 0 {
+		paddingLen = 0
+	}
+	paddedData := make([]byte, len(data)+paddingLen)
+	copy(paddedData, data)
+	for i := len(data); i < len(paddedData); i++ {
+		paddedData[i] = byte(paddingLen)
+	}
+	return paddedData
+}
+func PLPUnpadding(data []byte) ([]byte, error) {
+	if len(data) < 1 {
+		return nil, fmt.Errorf("invalid data")
+	}
+	paddingLen := int(data[0])
+	if paddingLen < 0 || paddingLen > len(data)-1 {
+		return nil, fmt.Errorf("the length of the padding is invalid")
+	}
+	return data[1 : len(data)-paddingLen], nil
 }

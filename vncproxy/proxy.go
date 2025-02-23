@@ -14,8 +14,8 @@ import (
 	"github.com/sonnt85/gosutils/slogrus"
 	"github.com/sonnt85/gosutils/sregexp"
 
+	websocketg "github.com/gorilla/websocket"
 	"golang.org/x/net/websocket"
-	// "github.com/gorilla/websocket"
 )
 
 type TokenHandler func(r *http.Request, retToken ...*string) (addr string, err error)
@@ -57,9 +57,70 @@ func New(conf *Config) *Proxy {
 		OnDisconectFunc: conf.OnDisconectFunc,
 	}
 }
+func (p *Proxy) HandleWS(w http.ResponseWriter, r *http.Request) {
+
+	upgrader := websocketg.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+	conng, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conng.Close()
+	p.logger.Debugf("request url: %v", r.URL)
+
+	conn := NewConnWs(conng)
+	// get vnc backend server addr
+	retToken := ""
+	addr, err := p.tokenHandler(r, &retToken)
+	if err != nil {
+		p.logger.Infof("get vnc backend failed: %v", err)
+		return
+	}
+
+	peer, err := NewPeer(conn, addr, retToken)
+	if err != nil {
+		p.logger.Infof("new vnc peer failed: %v", err)
+		return
+	}
+
+	if p.OnConnectFunc != nil {
+		p.OnConnectFunc(peer)
+	}
+	p.addPeer(peer)
+	defer func() {
+		if p.OnDisconectFunc != nil {
+			p.OnDisconectFunc(peer)
+		}
+		p.logger.Info("close peer")
+		p.deletePeer(peer)
+	}()
+
+	go func() {
+		if err := peer.ReadTarget(); err != nil {
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				return
+			}
+			p.logger.Info(err)
+			return
+		}
+	}()
+
+	if err = peer.ReadSource(); err != nil {
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			return
+		}
+		p.logger.Info(err)
+		return
+	}
+}
+
+// func (p *Proxy) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 // ServeWS provides websocket handler
 func (p *Proxy) ServeWS(ws *websocket.Conn) {
+	// h := websocket.Handler(GvarVnc.vncProxy.ServeWS)
+	// 	h.ServeHTTP(ctx.Writer, ctx.Request)
 	p.logger.Debugf("ServeWS")
 	ws.PayloadType = websocket.BinaryFrame
 

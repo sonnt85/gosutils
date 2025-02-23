@@ -202,7 +202,7 @@ func (c *Client) SCPFromRemote(sourcePath, destinationPath string, ignErr, IsQui
 		//		errPipe:     os.Stdout,
 	}
 
-	return scpFromRemote(scp, session)
+	return scpFromRemote(scp, NewScpSessionFromsshSecsion(session))
 }
 
 func (c *Client) SCPToRemote(sourcePath, destinationPath string, ignErr, IsQuiet bool) (err error) {
@@ -236,7 +236,7 @@ func (c *Client) SCPToRemote(sourcePath, destinationPath string, ignErr, IsQuiet
 		//		outPipe:     os.Stdout,
 		//		errPipe:     os.Stdout,
 	}
-	return scpToRemote(scp, session)
+	return scpToRemote(scp, NewScpSessionFromsshSecsion(session))
 }
 
 //func (c *Client) Run1(cmd string) (stdout, stderr string, err error) {
@@ -319,29 +319,44 @@ func (c *Client) LocalForward(retport chan int, laddrstr, raddrstr string) error
 		laddrstr = "localhost:0"
 	}
 
-	laddr, err := net.ResolveTCPAddr("tcp", laddrstr)
-	if err != nil {
-		println(err.Error())
-		return err
-	}
+	// laddr, err := net.ResolveTCPAddr("tcp", laddrstr)
+	// if err != nil {
+	// 	// println(err.Error())
+	// 	return err
+	// }
 
 	raddr, err := net.ResolveTCPAddr("tcp", raddrstr)
 	if err != nil {
-		println(err.Error())
+		// println(err.Error())
 		return err
 	}
-	ln, err := net.ListenTCP("tcp", laddr) //tie to the client connection
+	var ln net.Listener
+	var laddr *net.TCPAddr
+	laddr, err = net.ResolveTCPAddr("tcp", ln.Addr().String())
 	if err != nil {
-		println(err.Error())
+		// println(err.Error())
+		return err
+	}
+	ln, err = net.ListenTCP("tcp", laddr) //tie to the client connection
+	if err != nil {
+		// println(err.Error())
 		return err
 	}
 
 	go func() {
-		select {
-		case retport <- ln.Addr().(*net.TCPAddr).Port:
-			doneRetPort = true
-			return
-		}
+		// timer := time.AfterFunc(time.Second*20, func() {
+		// 	retport <- 0
+		// })
+		// defer timer.Stop()
+
+		// select {
+		// case retport <- ln.Addr().(*net.TCPAddr).Port:
+		// 	doneRetPort = true
+		// case <-timer.C:
+		// 	close(retport)
+		// }
+		retport <- ln.Addr().(*net.TCPAddr).Port
+		doneRetPort = true
 	}()
 	//	log.Println("[LocalForward] Listening on address: ", ln.Addr().String())
 
@@ -390,7 +405,7 @@ func (c *Client) LocalForward(retport chan int, laddrstr, raddrstr string) error
 }
 
 // RemoteForward forwards a remote port - ssh -R
-func (c *Client) RemoteForward(retport chan int, remote, local string) error {
+func (c *Client) RemoteForward(retport chan int, remote, local string, lln ...net.Listener) error {
 	if remote == "0" {
 		remote = "localhost:0"
 	}
@@ -421,16 +436,27 @@ func (c *Client) RemoteForward(retport chan int, remote, local string) error {
 				return
 			default:
 				conn, err := ln.Accept()
-				//				conn.SetDeadline(t)
+				//conn.SetDeadline(t)
 				if err != nil { // Unable to accept new connection - listener likely closed
 					continue
 				}
-
-				conn2, err := net.Dial("tcp", local)
+				var conn2 net.Conn
+				hasln := false
+				if len(lln) != 0 {
+					ln := lln[0]
+					if newcon, ok := ln.(interface {
+						Dial() (net.Conn, error)
+					}); ok {
+						conn2, err = newcon.Dial()
+						hasln = true
+					}
+				}
+				if !hasln {
+					conn2, err = net.Dial("tcp", local)
+				}
 				if err != nil {
 					continue
 				}
-
 				closefunc := func() {
 					conn.Close()
 					conn2.Close()

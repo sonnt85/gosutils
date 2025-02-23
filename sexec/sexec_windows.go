@@ -5,14 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
-	"github.com/shirou/gopsutil/process"
+	"github.com/shirou/gopsutil/v4/process"
 	"github.com/sonnt85/gosutils/cmdshellwords"
 	"github.com/sonnt85/gosutils/endec"
 
@@ -31,91 +33,33 @@ func makeCmdLine(args []string) string {
 	return s
 }
 
-//lint:ignore U1000 ignore this!
-func execCommandShellElevatedEnvTimeout_(ctxc context.Context, exe string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
-	var stdout, stderr bytes.Buffer
-	if timeout == 0 || timeout == -1 {
-		timeout = 1<<63 - 1
-	}
-	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
-	defer cancelFn()
-	cmd := exec.CommandContext(ctx, "cmd", append([]string{"/C", exe}, args...)...)
-
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	// script := makeCmdLine(append([]string{exe}, args...))
-	// cmd.Stdin = bytes.NewBuffer([]byte(script))
-	hidewindow := true
-	if showCmd != 0 {
-		hidewindow = false
-	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CmdLine: "runas /user:Administrator",
-		// Token:      getAdminToken(),
-		HideWindow: hidewindow,
-	}
-	cmd.Env = EnrovimentMergeWithCurrentEnv(moreenvs)
-	err = cmd.Start()
-	if err != nil {
-		return stdOut, stdErr, err
-	}
-	needKill := false
-	if ctxc == nil {
-		err = cmd.Wait()
-	} else {
-		c := make(chan error, 1)
-
-		// Thực hiện cmd.Wait() trong một goroutine riêng
-		go func() {
-			c <- cmd.Wait()
-		}()
-
-		select {
-		case err = <-c: // cmd.Wait()
-		case <-ctxc.Done():
-			err = errors.New("cancelled context")
-			needKill = true
-		}
-	}
-	if needKill {
-		killChilds(cmd.Process.Pid)
-		cmd.Process.Kill()
-	}
-
-	if ctx.Err() == context.DeadlineExceeded {
-		err = fmt.Errorf("124:Timeout")
-	}
-	if err != nil {
-		errstr := err.Error()
-		if strings.HasPrefix(errstr, "wait") && strings.HasSuffix(errstr, ": no child processes") {
-			err = nil
-		}
-	}
-	if err != nil {
-		errstr := fmt.Sprintf("error code: [%s]", err)
-		if stdout.Len() != 0 {
-			errstr = fmt.Sprintf("%s, stdout: [%s]", errstr, stdout.String())
-		}
-		if stderr.Len() != 0 {
-			errstr = fmt.Sprintf("%s, stderr: [%s]", errstr, stderr.String())
-		}
-		err = fmt.Errorf(errstr)
-	}
-
-	return stdout.Bytes(), stderr.Bytes(), err
-}
-
-func execCommandShellElevatedEnvTimeout(ctxc context.Context, exe string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
+func execCommandShellElevatedEnvTimeout(ctxc context.Context, exe string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...interface{}) (stdOut, stdErr []byte, err error) {
 
 	// err = elevate.ShellExecute(exe, makeCmdLine(args), "", showCmd)
 	// return
 	verb := "runas"
-	if timeout == 0 || timeout == -1 {
-		// if timeout == -1 {
-		timeout = 1<<63 - 1
+	if ctxc == nil {
+		ctxc = context.Background()
 	}
-	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
-	defer cancelFn()
+	if timeout > 0 {
+		var cancelFn context.CancelFunc
+		ctxc, cancelFn = context.WithTimeout(ctxc, timeout)
+		defer cancelFn()
+	}
+
+	// ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
+	// defer cancelFn()
+	var arg []string
+	for _, a := range args {
+		switch v := a.(type) {
+		case string:
+			arg = append(arg, v)
+		case io.Writer:
+		default:
+			err = fmt.Errorf("unsupported type: %#v", v)
+			return
+		}
+	}
 	if len(exe) == 0 {
 		exe, err = os.Executable()
 		if err != nil {
@@ -128,7 +72,7 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, exe string, showCm
 		}
 	}
 	cwd, _ := os.Getwd()
-	argstr := cmdshellwords.Join(args...)
+	argstr := cmdshellwords.Join(arg...)
 	// argstr := strings.Join(args, " ") //notwork
 	// elevate.RunMeElevated()
 	// argstr := makeCmdLine(args)
@@ -144,7 +88,7 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, exe string, showCm
 	if moreenvs == nil {
 		moreenvs = make(map[string]string)
 	}
-	checkprog, _ := moreenvs["LOOKUPEXE"]
+	checkprog := moreenvs["LOOKUPEXE"]
 	delete(moreenvs, "LOOKUPEXE")
 	idprogKey := "__IDPROG__" + endec.GenerateRandomAssci(5) //"__IDPROG__"
 	randomString := endec.GenerateRandomAssci(16)            //fmt.Sprintf("__CPID%d", os.Getpid())
@@ -152,15 +96,17 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, exe string, showCm
 		moreenvs[idprogKey] = randomString
 	}
 	if len(moreenvs) != 0 {
-		isClear := false
-		script := createEnvSetxBatchFileContent(moreenvs, true)
-		ExecCommandShell(script)
+		cmdenv := exec.Command("cmd.exe")
+		CmdHiddenConsole(cmdenv)
+		cmdenv.Stdin = bytes.NewBuffer([]byte(createEnvSetxBatchFileContent(moreenvs, true)))
+		cmdenv.Run()
+		onceClear := sync.Once{}
 		clear := func() {
-			if !isClear {
-				script := createEnvSetxBatchFileContent(moreenvs, false)
-				ExecCommandShell(script)
-				isClear = true
-			}
+			onceClear.Do(func() {
+				cmdenv := exec.Command("cmd.exe")
+				cmdenv.Stdin = bytes.NewBuffer([]byte(createEnvSetxBatchFileContent(moreenvs, false)))
+				cmdenv.Run()
+			})
 		}
 		defer func() {
 			clear()
@@ -171,9 +117,6 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, exe string, showCm
 		}()
 	}
 
-	if ctxc == nil {
-		ctxc = context.Background()
-	}
 	exeBaseName := filepath.Base(exe)
 	err = windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
 	if err != nil {
@@ -235,103 +178,14 @@ func execCommandShellElevatedEnvTimeout(ctxc context.Context, exe string, showCm
 		}()
 	}
 	select {
-	case <-ctx.Done():
+	case <-ctxc.Done():
 		err = errors.New("124:Timeout")
-
 	case <-ctxc.Done():
 		err = errors.New("cancelled context")
 	case <-errDone:
 	}
 
 	return nil, nil, err
-}
-
-func execCommandShellElevatedEnvTimeoutOld(ctxc context.Context, exe string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdout, stderr []byte, err error) {
-	verb := "runas"
-	if timeout == -1 {
-		timeout = 1<<63 - 1
-	}
-
-	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
-	defer cancelFn()
-
-	if len(exe) == 0 {
-		exe, err = os.Executable()
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-
-	cwd, _ := os.Getwd()
-	if moreenvs == nil {
-		moreenvs = make(map[string]string)
-	}
-	idprogKey := "__IDPROG__" + endec.GenerateRandomAssci(5)
-	randomString := endec.GenerateRandomAssci(16)
-	moreenvs[idprogKey] = randomString
-
-	var processEnvMap = make(map[string]string, 0)
-	for _, rawEnvLine := range os.Environ() {
-		k, v, ok := strings.Cut(rawEnvLine, "=")
-		if !ok {
-			continue
-		}
-		processEnvMap[k] = v
-	}
-
-	for key, value := range moreenvs {
-		processEnvMap[key] = value
-	}
-
-	batchContent := createBatchFileContent(exe, processEnvMap, args...)
-	batchFile, err := os.CreateTemp("", "*e.bat")
-	if err != nil {
-		return nil, nil, err
-	}
-	_, err = batchFile.WriteString(batchContent)
-	if err != nil {
-		return nil, nil, err
-	}
-	exePath := batchFile.Name()
-	batchFile.Close()
-	verbPtr, _ := syscall.UTF16PtrFromString(verb)
-	exePtr, _ := syscall.UTF16PtrFromString(exePath)
-	cwdPtr, _ := syscall.UTF16PtrFromString(cwd)
-	// argPtr, _ := syscall.UTF16PtrFromString("")
-	argPtr, _ := syscall.UTF16PtrFromString("/savecred")
-	err = windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
-	defer func() {
-		cmd := exec.Command("setx", idprogKey, "")
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-		cmd.CombinedOutput()
-	}()
-
-	if err != nil {
-		return nil, nil, err
-	}
-	if ctxc == nil {
-		ctxc = context.Background()
-	}
-	ticker := time.NewTicker(time.Second) // Định kỳ mỗi giây
-
-loop:
-	for {
-		select {
-		case <-ctx.Done():
-			err = errors.New("124:Timeout")
-			break loop
-		case <-ctxc.Done():
-			err = errors.New("cancelled context")
-			break loop
-			//case err = <-errc: //
-		case <-ticker.C:
-			if len(PgrepWithEnv(filepath.Base(exe), idprogKey, randomString)) == 0 {
-				break loop
-			}
-		}
-		// needKill = true
-	}
-	return stdout, stderr, err
 }
 
 func createEnvSetxBatchFileContent(env map[string]string, isSet bool) string {
@@ -344,10 +198,15 @@ func createEnvSetxBatchFileContent(env map[string]string, isSet bool) string {
 		}
 		if isSet {
 			val = syscall.EscapeArg(v)
+			builder.WriteString(fmt.Sprintf(`setx %s %s`, k, val))
 		} else {
-			val = ""
+			// val = ""
+			// builder.WriteString(fmt.Sprintf(`REG DELETE "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v %s /f`, k))
+			//HKEY_CURRENT_USER\Environment HKCU\Environment
+			// builder.WriteString(fmt.Sprintf(`REG DELETE "HKEY_CURRENT_USER\Environment" /v %s /f\n`, k))
+			builder.WriteString(fmt.Sprintf(`REG DELETE "HKCU\Environment" /v %s /f`, k))
 		}
-		builder.WriteString(fmt.Sprintf(`setx %s %s`, k, val))
+
 		builder.WriteString("\n")
 	}
 	builder.WriteString("exit\n")

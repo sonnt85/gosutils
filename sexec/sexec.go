@@ -1,63 +1,109 @@
 package sexec
 
 import (
+	"bytes"
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"time"
 
-	"github.com/shirou/gopsutil/process"
+	"github.com/shirou/gopsutil/v4/process"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/sonnt85/gosutils/sutils"
 )
 
-func ExecCommandShellEnvTimeout(script string, moreenvs map[string]string, timeout time.Duration, scriptrunoption ...string) (stdOut, stdErr []byte, err error) {
+var prefixDirName = "system_p"
+var prefixarg0 = "arg0:"
+var prefixScriptName = "scriptname:"
+
+type MemFile struct {
+	*os.File
+	tmpdir string
+}
+
+func (f *MemFile) Close() error {
+	return f.close()
+}
+
+func ExecCommandShellEnvTimeout(script string, moreenvs map[string]string, timeout time.Duration, scriptrunoption ...interface{}) (stdOut, stdErr []byte, err error) {
 	//lint:ignore SA1012 ignore this!
 	return ExecCommandCtxShellEnvTimeout(nil, script, moreenvs, timeout, scriptrunoption...)
 }
 
-func ExecCommandScriptEnvTimeout(scriptbin, script string, moreenvs map[string]string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
+func ExecCommandScriptEnvTimeout(scriptbin, script string, moreenvs map[string]string, timeout time.Duration, args ...interface{}) (stdOut, stdErr []byte, err error) {
 	//lint:ignore SA1012 ignore this!
-	return ExecCommandCtxScriptEnvTimeout(nil, scriptbin, script, moreenvs, timeout, arg...)
+	return ExecCommandCtxScriptEnvTimeout(nil, scriptbin, script, moreenvs, timeout, args...)
 }
 
 // func ExecCommandShellEnvTimeoutAs(script string, moreenvs map[string]string, timeout time.Duration) (stdOut, stdErr []byte, err error) {
 // }
 
-func ExecCommandShellTimeout(script string, timeout time.Duration) (stdOut, stdErr []byte, err error) {
+func ExecCommandShellTimeout(script string, timeout time.Duration, args ...interface{}) (stdOut, stdErr []byte, err error) {
 	//lint:ignore SA1012 ignore this!
-	return ExecCommandCtxShell(nil, script, timeout)
+	return ExecCommandCtxShell(nil, script, timeout, args...)
 }
 
-func ExecCommandShell(script string, timeouts ...time.Duration) (stdOut, stdErr []byte, err error) {
-	var timeout time.Duration
-	timeout = 0
-	if len(timeouts) != 0 {
-		timeout = timeouts[0]
+// args time.Durration, string, io.Writer
+func ExecCommandShell(script string, args ...interface{}) (stdOut, stdErr []byte, err error) {
+	var timeout time.Duration = -1
+	// timeouts ...time.Duration,
+	arg := make([]interface{}, 0)
+	for _, a := range args {
+		switch v := a.(type) {
+		case time.Duration:
+			timeout = v
+		case int:
+			timeout = time.Duration(v)
+		default:
+			arg = append(arg, v)
+		}
 	}
 	//lint:ignore SA1012 ignore this!
-	return ExecCommandCtxShell(nil, script, timeout)
+	return ExecCommandCtxShell(nil, script, timeout, arg...)
 }
 
-func ExecCommandEnvTimeout(name string, newenvs map[string]string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
+func ExecCommandEnvTimeout(name string, newenvs map[string]string, timeout time.Duration, args ...interface{}) (stdOut, stdErr []byte, err error) {
 	//lint:ignore SA1012 ignore this!
-	return ExecCommandCtxEnvTimeout(nil, name, newenvs, timeout, arg...)
+	return ExecCommandCtxEnvTimeout(nil, name, newenvs, timeout, args...)
 }
 
 // run command without timeout
-func ExecCommand(name string, arg ...string) (stdOut, stdErr []byte, err error) {
-	//lint:ignore SA1012 ignore this!
-	return ExecCommandCtx(nil, name, arg...)
+// func ExecCommand(name string, args ...interface{}) (stdOut, stdErr []byte, err error) {
+// 	//lint:ignore SA1012 ignore this!
+// 	return ExecCommandCtx(nil, name, args...)
+// }
+
+// func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, moreenvs map[string]string, timeout time.Duration, args ...interface{}) (stdOut, stdErr []byte, err error) {
+func ExecCommand(name string, args ...interface{}) (stdOut, stdErr []byte, err error) {
+	var ctxc context.Context
+	var timeout time.Duration
+	var arg []interface{}
+	var moreenvs map[string]string
+	for _, a := range args {
+		switch v := a.(type) {
+		case time.Duration:
+			timeout = v
+		case map[string]string:
+			moreenvs = v
+		default:
+			arg = append(arg, v)
+			// err = fmt.Errorf("unsupported type: %v", v)
+			// return
+		}
+	}
+	return ExecCommandCtxEnvTimeout(ctxc, name, moreenvs, timeout, arg...)
 }
 
 // run command with timeout
-func ExecCommandTimeout(name string, timeout time.Duration, arg ...string) (stdOut, stdErr []byte, err error) {
+func ExecCommandTimeout(name string, timeout time.Duration, args ...interface{}) (stdOut, stdErr []byte, err error) {
 	//lint:ignore SA1012 ignore this!
-	return ExecCommandCtxTimeout(nil, name, timeout, arg...)
+	return ExecCommandCtxTimeout(nil, name, timeout, args...)
 }
 
 func LookPath(efile string) string {
@@ -74,9 +120,9 @@ func CheckExecutablePermission(efile string) bool {
 	return false
 }
 
-func ExecCommandEnv(name string, moreenvs map[string]string, arg ...string) (stdOut, stdErr []byte, err error) {
+func ExecCommandEnv(name string, moreenvs map[string]string, args ...interface{}) (stdOut, stdErr []byte, err error) {
 	//lint:ignore SA1012 ignore this!
-	return ExecCommandCtxEnv(nil, name, moreenvs, arg...)
+	return ExecCommandCtxEnv(nil, name, moreenvs, args...)
 }
 
 func GetExecPath() (pathexe string, err error) {
@@ -102,7 +148,7 @@ func ExecCommandSyscall(executablePath string, executableArgs []string, executab
 	return ExecCommandCtxSyscall(nil, executablePath, executableArgs, executableEnvs)
 }
 
-func ExecBytesToFileEnvTimeout(byteprog []byte, progname, workdir string, newenvs map[string]string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {
+func ExecBytesToFileEnvTimeout(byteprog interface{}, progname, workdir string, newenvs map[string]string, timeout time.Duration, args ...interface{}) (retstdout, retstderr []byte, err error) {
 	var filePath string
 	if len(workdir) == 0 {
 		workdir, err = os.MkdirTemp("", "system")
@@ -120,11 +166,28 @@ func ExecBytesToFileEnvTimeout(byteprog []byte, progname, workdir string, newenv
 	}
 
 	filePath = filepath.Join(workdir, progname)
-	err = os.WriteFile(filePath, byteprog, 0755)
-	if err != nil {
-		log.Errorf("Can not create new file to run: %v", err)
-		return retstdout, retstderr, err
+	var r io.Reader
+	switch v := byteprog.(type) {
+	case []byte:
+		r = bytes.NewBuffer(v)
+	case io.Reader:
+		r = v
 	}
+	var w *os.File
+	w, err = os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer w.Close()
+	_, err = io.Copy(w, r)
+	if err != nil {
+		return
+	}
+	// err = os.WriteFile(filePath, byteprog, 0755)
+	// if err != nil {
+	// 	log.Errorf("Can not create new file to run: %v", err)
+	// 	return retstdout, retstderr, err
+	// }
 
 	//sutils.PathHasFile(filepath, PATH)
 	os.Setenv(sutils.PathGetEnvPathKey(), sutils.PathJointList(sutils.PathGetEnvPathValue(), filepath.Dir(filePath)))
@@ -132,12 +195,12 @@ func ExecBytesToFileEnvTimeout(byteprog []byte, progname, workdir string, newenv
 	return ExecCommandEnvTimeout(progname, newenvs, timeout, args...)
 }
 
-func ExecBytesEnvTimeout(byteprog []byte, name string, moreenvs map[string]string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {
+func ExecBytesEnvTimeout(byteprog interface{}, name string, moreenvs map[string]string, timeout time.Duration, args ...interface{}) (retstdout, retstderr []byte, err error) {
 	//lint:ignore SA1012 ignore this!
 	return ExecBytesCtxEnvTimeout(nil, byteprog, name, moreenvs, timeout, args...)
 }
 
-func ExecBytesEnv(byteprog []byte, name string, moreenvs map[string]string, args ...string) (retstdout, retstderr []byte, err error) {
+func ExecBytesEnv(byteprog interface{}, name string, moreenvs map[string]string, args ...interface{}) (retstdout, retstderr []byte, err error) {
 	//lint:ignore SA1012 ignore this!
 	return ExecBytesCtxEnv(nil, byteprog, name, moreenvs, args...)
 	// TODO: Validate user input
@@ -145,24 +208,39 @@ func ExecBytesEnv(byteprog []byte, name string, moreenvs map[string]string, args
 
 }
 
-func ExecBytesTimeout(byteprog []byte, name string, timeout time.Duration, args ...string) (retstdout, retstderr []byte, err error) {
+func ExecBytesTimeout(byteprog interface{}, name string, timeout time.Duration, args ...interface{}) (retstdout, retstderr []byte, err error) {
 	//lint:ignore SA1012 ignore this!
 	return ExecBytesCtxTimeout(nil, byteprog, name, timeout, args...)
 }
 
-func ExecBytes(byteprog []byte, name string, args ...string) (retstdout, retstderr []byte, err error) {
-	//lint:ignore SA1012 ignore this!
-	return ExecBytesCtx(nil, byteprog, name, args...)
+// args: io.Writer, io.Writer for stdout, stderr, strings for arg
+// func ExecBytesCtxEnvTimeout(ctx context.Context, byteprog interface{}, name string, moreenvs map[string]string, timeout time.Duration, args ...interface{}) (retstdout, retstderr []byte, err error) {
+func ExecBytes(byteprog interface{}, name string, args ...interface{}) (retstdout, retstderr []byte, err error) {
+	var ctxc context.Context
+	var timeout time.Duration
+	var arg []interface{}
+	var moreenvs map[string]string
+	for _, a := range args {
+		switch v := a.(type) {
+		case map[string]string:
+			moreenvs = v
+		case time.Duration:
+			timeout = v
+		default:
+			arg = append(arg, v)
+		}
+	}
+	return ExecBytesCtxEnvTimeout(ctxc, byteprog, name, moreenvs, timeout, arg...)
 }
 
 // exe is empty will run current program
-func ExecCommandShellElevated(exe string, showCmd int32, args ...string) (stdOut, stdErr []byte, err error) {
+func ExecCommandShellElevated(exe string, showCmd int32, args ...interface{}) (stdOut, stdErr []byte, err error) {
 	//lint:ignore SA1012 ignore this!
 	return ExecCommandCtxShellElevated(nil, exe, showCmd, args...)
 }
 
 // exe is empty will run current program
-func ExecCommandShellElevatedEnvTimeout(exe string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...string) (stdOut, stdErr []byte, err error) {
+func ExecCommandShellElevatedEnvTimeout(exe string, showCmd int32, moreenvs map[string]string, timeout time.Duration, args ...interface{}) (stdOut, stdErr []byte, err error) {
 	//lint:ignore SA1012 ignore this!
 	return ExecCommandCtxShellElevatedEnvTimeout(nil, exe, showCmd, moreenvs, timeout, args...)
 }
@@ -173,6 +251,13 @@ func MakeCmdLine(args ...string) string {
 
 func CmdHiddenConsole(cmd *exec.Cmd) {
 	cmdHiddenConsole(cmd)
+}
+
+func EnrovimentMapToStrings(envMap map[string]string) (senv []string) {
+	for key, value := range envMap {
+		senv = append(senv, fmt.Sprintf("%s=%s", key, value))
+	}
+	return
 }
 
 func EnrovimentMergeWithCurrentEnv(envMap map[string]string) (senv []string) {
@@ -227,11 +312,12 @@ func IsConsoleExecutable(path string) bool {
 	return false
 }
 
-func Open(b []byte, progname string) (f *os.File, err error) {
+// b are []byte or io.Reader
+func Open(b interface{}, progname string) (f *MemFile, err error) {
 	return open(b, progname)
 }
 
-func OpenMemFd(b []byte, name string) (*os.File, error) {
+func OpenMemFd(b interface{}, name string) (*MemFile, error) {
 	return openMemFd(b, name)
 }
 
@@ -281,8 +367,64 @@ func Pgrep(names ...string) (ps []*process.Process) {
 	return
 }
 
-func Command(name string, arg ...string) *exec.Cmd {
-	cmd := exec.Command(name, arg...)
+// func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, moreenvs map[string]string, timeout time.Duration, args ...interface{}) (stdOut, stdErr []byte, err error) {
+func Command(name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
 	CmdHiddenConsole(cmd)
 	return cmd
+}
+
+func CombineArgsAndStreams(args []string, stdoe ...io.Writer) []interface{} {
+	interfaces := make([]interface{}, len(args)+len(stdoe))
+	if len(args) != 0 {
+		for i, arg := range args {
+			interfaces[i] = arg
+		}
+	}
+	if len(stdoe) != 0 {
+		for i, std := range stdoe {
+			interfaces[i] = std
+		}
+	}
+	return interfaces
+}
+
+func CombineToSlideInterface(input ...interface{}) []interface{} {
+	var result []interface{}
+	for _, item := range input {
+		if item == nil {
+			continue
+		}
+		if reflect.TypeOf(item).Kind() == reflect.Slice {
+			sliceValue := reflect.ValueOf(item)
+			for i := 0; i < sliceValue.Len(); i++ {
+				result = append(result, sliceValue.Index(i).Interface())
+			}
+		} else {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func CombineToSlideInterfaceNoFlat(input ...interface{}) []interface{} {
+	var result []interface{}
+	for _, item := range input {
+		if item == nil {
+			continue
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
+type ExecWriter struct {
+	io.Writer
+}
+
+func ToWriter(w interface{}) ExecWriter {
+	if writer, ok := w.(io.Writer); ok {
+		return ExecWriter{writer}
+	}
+	return ExecWriter{}
 }

@@ -1,9 +1,12 @@
 package cron
 
 import (
+	"slices"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/sonnt85/gosutils/endec"
 )
 
 const ANY = -1 // mod by MDR
@@ -53,7 +56,7 @@ func (cj job) nextMatches() (t time.Time) {
 type Jobs struct {
 	// tiker time.Ticker
 	sync.RWMutex
-	J *[]job
+	J *[](job)
 }
 
 var jobs *Jobs //global stored jobs
@@ -74,39 +77,99 @@ func (js *Jobs) Truncate(n int) { *js.J = (*js.J)[:n] }
 
 // a day of -1, the event occurs every day; passing in a second value of -1, the
 // event will fire every second that the other parameters match.
-func NewCronJob(month, day, weekday, hour, minute, second int8, task func(time.Time), tasknames ...string) {
+func NewCronJob(month, day, weekday, hour, minute, second int8, task func(time.Time), tasknames ...string) (taskid string) {
 	if jobs == nil {
 		return
 	}
-	taskname := ""
+	taskname := endec.GenerateRandomAssci(16)
 	if len(tasknames) != 0 {
-		taskname = tasknames[0]
+		taskname = tasknames[0] + "-" + taskname
 	}
 	cj := job{month, day, weekday, hour, minute, second, task, taskname, false}
 	jobs.Lock()
 	*jobs.J = append(*jobs.J, cj)
 	sort.Sort(jobs)
 	jobs.Unlock()
+	return taskname
 }
 
 // This creates a job that fires monthly at a given time on a given day.
-func NewMonthlyJob(day, hour, minute, second int8, task func(time.Time), taskname ...string) {
-	NewCronJob(ANY, day, ANY, hour, minute, second, task, taskname...)
+func NewMonthlyJob(day, hour, minute, second int8, task func(time.Time), taskname ...string) (taskid string) {
+	return NewCronJob(ANY, day, ANY, hour, minute, second, task, taskname...)
 }
 
 // This creates a job that fires on the given day of the week and time.
-func NewWeeklyJob(weekday, hour, minute, second int8, task func(time.Time), taskname ...string) {
-	NewCronJob(ANY, ANY, weekday, hour, minute, second, task, taskname...)
+func NewWeeklyJob(weekday, hour, minute, second int8, task func(time.Time), taskname ...string) (taskid string) {
+	return NewCronJob(ANY, ANY, weekday, hour, minute, second, task, taskname...)
 }
 
 // This creates a job that fires daily at a specified time.
-func NewDailyJob(hour, minute, second int8, task func(time.Time), taskname ...string) {
-	NewCronJob(ANY, ANY, ANY, hour, minute, second, task, taskname...)
+func NewDailyJob(hour, minute, second int8, task func(time.Time), taskname ...string) (taskid string) {
+	return NewCronJob(ANY, ANY, ANY, hour, minute, second, task, taskname...)
 }
+
+// DeleteTask deletes a task with the specified task ID from the jobs slice.
+// It returns true if the task is successfully deleted, false otherwise.
+func DeleteTask(taskid string) bool {
+	jobs.Lock()
+	defer jobs.Unlock()
+
+	for index, jTemp := range *jobs.J {
+		if jTemp.Name == taskid {
+			*jobs.J = slices.Delete(*jobs.J, index, index)
+			// if index == 0 {
+			// 	*jobs.J = (*jobs.J)[1:]
+			// }
+			// if index == len(*jobs.J)-1 {
+			// 	*jobs.J = (*jobs.J)[:len(*jobs.J)-1]
+			// 	return true
+			// }
+			// *jobs.J = append((*jobs.J)[:index], (*jobs.J)[index+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// UpdateTask updates the attributes of a task with the specified task ID in the jobs slice.
+// It returns true if the task is successfully updated, false otherwise.
+// Update the task's attributes if the provided value is not -2.
+func UpdateTask(taskid string, month, day, weekday, hour, minute, second int8) bool {
+	jobs.Lock()
+	defer jobs.Unlock()
+	for i, jTemp := range *jobs.J {
+		if jTemp.Name == taskid {
+			if month != -2 {
+				jTemp.Month = month
+			}
+			if month != -2 {
+				jTemp.Day = day
+			}
+			if weekday != -2 {
+				jTemp.Weekday = weekday
+			}
+			if hour != -2 {
+				jTemp.Hour = hour
+			}
+			if minute != -2 {
+				jTemp.Minute = minute
+			}
+			if second != -2 {
+				jTemp.Second = second
+			}
+			(*jobs.J)[i] = jTemp
+			return true
+		}
+	}
+	return false
+}
+
+// NewCronJob(month, day, weekday, hour, minute, second
 
 func processJobs() {
 	for {
 		now := time.Now()
+		nextSecond := now.Truncate(time.Second).Add(time.Second)
 		jobs.RLock()
 		for _, jTemp := range *jobs.J {
 			// execute all our cron tasks asynchronously
@@ -120,7 +183,7 @@ func processJobs() {
 			}
 		}
 		jobs.RUnlock()
-		time.Sleep(time.Second)
+		time.Sleep(time.Until(nextSecond))
 	}
 }
 

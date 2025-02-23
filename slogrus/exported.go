@@ -101,6 +101,10 @@ func (slog *Slog) TraceStack(msg ...any) {
 	slog.Trace(nmsg...)
 }
 
+func (slog *Slog) DisableStd(msg ...any) {
+	slog.Out = io.Discard
+}
+
 func (slog *Slog) TracefStack(format string, args ...interface{}) {
 	args = traceStackSkip(args...)
 	format = format + "[%s]"
@@ -149,6 +153,15 @@ func Flush() {
 func ColorStd() {
 	// colorable.NewColorableStderr().Write(p []byte)
 	colorable.EnableColorsStdout(nil)()
+}
+
+func DisableStd() {
+	os.Stdout, _ = os.Open(os.DevNull)
+	os.Stderr, _ = os.Open(os.DevNull)
+}
+
+func DisableOutput() {
+	stdSlog.SetOutput(io.Discard)
 }
 
 // logPath string, log_level logrus.Level, pretty bool)

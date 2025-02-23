@@ -1,14 +1,14 @@
 package simplessh
 
 import (
+	"bufio"
 	"bytes"
-	"golang.org/x/crypto/ssh"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
-		"strings"
-		"bufio"
+	"strings"
+
+	"golang.org/x/crypto/ssh"
 	//	"os/exec"
 	//	"strconv"
 	//	"fmt"
@@ -25,7 +25,7 @@ type Client struct {
 func ClientAuthMethod(file string) (ssh.AuthMethod, error) {
 	var buffer []byte
 	if _, err := os.Stat(file); err == nil {
-		buffer, err = ioutil.ReadFile(file) //private key
+		buffer, err = os.ReadFile(file) //private key
 		if err != nil {
 			//			logger.Println(fmt.Sprintf("Cannot read SSH public key file %s, use password", file))
 			return nil, err

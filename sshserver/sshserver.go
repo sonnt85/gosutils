@@ -146,6 +146,9 @@ func sshSessionShellExecHandle(s gossh.Session) {
 					break
 				}
 			}
+			if _, e := exec.LookPath("clear"); e == nil {
+				pre_login += "clear\n"
+			}
 			cmd.Args = []string{"-i"}
 			sexec.CmdHiddenConsole(cmd)
 		} else { //is windows
@@ -495,7 +498,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			// return
 			// if _, err := exec.LookPath(commands[0]); err != nil || runtime.GOOS == "windows" { //not found scp, use buil-in
 			defer slogrus.WarnS("Exit scp server")
-			slogrus.WarnS("Starting scp server ...", commands)
+			slogrus.PrintfS("Starting scp server ...", commands)
 			scp := new(SecureCopier)
 			if sreflect.SlideHasElem(commands, "-r") {
 				scp.IsRecursive = true
@@ -510,8 +513,8 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			}
 			scp.IsVerbose = !scp.IsQuiet
 			scp.ignErr = false
-			scp.inPipe = s.(io.WriteCloser)
-			scp.outPipe = s.(io.ReadCloser)
+			scp.inPipe = s  //.(io.WriteCloser)
+			scp.outPipe = s //.(io.ReadCloser)
 			if sreflect.SlideHasElem(commands, "-t") {
 				scp.dstFile = filepath.FromSlashSmart(commands[len(commands)-1], true)
 				if err := scpFromClient(scp); err != nil {
@@ -821,7 +824,7 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 
 	// }
 	server.ConnCallback = func(ctx gossh.Context, conn net.Conn) net.Conn {
-		slogrus.PrintfS("New ssh connection from %s\n", conn.RemoteAddr().String())
+		slogrus.PrintfS("New ssh connection from %s [%s]", conn.RemoteAddr().String(), conn.LocalAddr().String())
 		//				slogrus.PrintfS("New ssh connection! %v\n", ctx)
 		return conn
 	}
@@ -859,20 +862,31 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 	return SSHServer
 }
 
-func (s *Server) Start(retport chan int) error {
-	ln, err := net.Listen("tcp4", s.Addr)
-	if err != nil {
-		return err
-	}
-	ctx, canFunc := context.WithTimeout(context.Background(), time.Second*30)
-	go func() {
-		select {
-		case retport <- ln.Addr().(*net.TCPAddr).Port:
-		case <-ctx.Done():
-			retport <- -1
+func (s *Server) Start(retport chan int, lns ...net.Listener) (err error) {
+	var ln net.Listener
+	hasln := false
+	if len(lns) != 0 && lns[0] != nil {
+		ln = lns[0]
+		hasln = true
+	} else {
+		ln, err = net.Listen("tcp4", s.Addr)
+		if err != nil {
+			return err
 		}
-		canFunc()
-	}()
+	}
+	if !hasln {
+		ctx, canFunc := context.WithTimeout(context.Background(), time.Second*30)
+		go func() {
+			select {
+			case retport <- ln.Addr().(*net.TCPAddr).Port:
+			case <-ctx.Done():
+				retport <- -1
+			}
+			canFunc()
+		}()
+	} else {
+		retport <- 0
+	}
 	err = s.Serve(ln)
 	return err
 	//	return s.ListenAndServe()

@@ -23,7 +23,7 @@ func New(default_size ...int) *BufCopy {
 	return &BufCopy{p}
 }
 
-func (b *BufCopy) Copy(dst io.Writer, src io.Reader) (written int64, err error) {
+func (b *BufCopy) Copy(dst io.Writer, src io.Reader, checkCloser ...bool) (written int64, err error) {
 	// If the reader has a WriteTo method, use it to do the copy.
 	// Avoids an allocation and a copy.
 	if wt, ok := src.(io.WriterTo); ok {
@@ -35,7 +35,17 @@ func (b *BufCopy) Copy(dst io.Writer, src io.Reader) (written int64, err error) 
 	}
 
 	buf := b.Get()
-	defer b.Put(buf)
+	defer func() {
+		b.Put(buf)
+		if len(checkCloser) != 0 && checkCloser[0] {
+			if c, ok := src.(io.Closer); ok {
+				c.Close()
+			}
+			if c, ok := dst.(io.Closer); ok {
+				c.Close()
+			}
+		}
+	}()
 	var nr, nw int
 	var er, ew error
 	for {
@@ -67,4 +77,46 @@ func (b *BufCopy) Copy(dst io.Writer, src io.Reader) (written int64, err error) 
 		}
 	}
 	return
+}
+
+var _bufcopy *BufCopy
+
+func Copy(dst io.Writer, src io.Reader, checkCloser ...bool) (written int64, err error) {
+	if _bufcopy == nil {
+		_bufcopy = New()
+	}
+	return _bufcopy.Copy(dst, src, checkCloser...)
+}
+
+func Copy2Way(rw1 io.ReadWriter, rw2 io.ReadWriter, checkCloser ...bool) (written int64, err error) {
+	if _bufcopy == nil {
+		_bufcopy = New()
+	}
+	return _bufcopy.Copy2Way(rw1, rw2, checkCloser...)
+}
+
+func (b *BufCopy) Copy2Way(rw1 io.ReadWriter, rw2 io.ReadWriter, checkCloser ...bool) (written int64, err error) {
+	var n1, n2 int64
+	var err1, err2 error
+	errorChannel := make(chan error, 1)
+	defer func() {
+		if len(checkCloser) != 0 && checkCloser[0] {
+			if c, ok := rw1.(io.Closer); ok {
+				c.Close()
+			}
+			if c, ok := rw2.(io.Closer); ok {
+				c.Close()
+			}
+		}
+	}()
+	go func() {
+		n1, err1 = b.Copy(rw1, rw2)
+		errorChannel <- err1
+	}()
+	go func() {
+		n2, err2 = b.Copy(rw2, rw1)
+		errorChannel <- err2
+	}()
+	err = <-errorChannel
+	return n1 + n2, err
 }

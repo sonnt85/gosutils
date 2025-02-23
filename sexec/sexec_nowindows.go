@@ -42,3 +42,7 @@ func cmdHiddenConsole(cmd *exec.Cmd) {
 		}
 	}
 }
+
+func createEnvSetxBatchFileContent(env map[string]string, isSet bool) string {
+	return ""
+}

@@ -1751,6 +1751,15 @@ func SlideHasElementInStrings(s []string, b string) bool {
 	return false
 }
 
+func SlideHasElement[T comparable](s []T, b T) bool {
+	for _, v := range s {
+		if v == b {
+			return true
+		}
+	}
+	return false
+}
+
 func NewProgressBarTo(subject string, size int64, outPipe io.Writer) ProgressBar {
 	return ProgressBar{outPipe, DEFAULT_FORMAT, subject, time.Now(), size}
 }

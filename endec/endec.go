@@ -22,6 +22,16 @@ import (
 	"os"
 )
 
+// EncrypBytes encrypts a byte slice (data) using the provided passphrase and returns
+// the encrypted ciphertext using AES in GCM (Galois/Counter Mode).
+//
+// Parameters:
+//   - data []byte: The data to be encrypted.
+//   - passphrase []byte: The passphrase used as the encryption key.
+//
+// Returns:
+//   - retbytes []byte: The encrypted ciphertext.
+//   - err error: An error, if any, encountered during encryption.
 func EncrypBytes(data []byte, passphrase []byte) (retbytes []byte, err error) {
 	block, _ := aes.NewCipher(MD5Bytes(passphrase))
 	gcm, err := cipher.NewGCM(block)
@@ -32,10 +42,21 @@ func EncrypBytes(data []byte, passphrase []byte) (retbytes []byte, err error) {
 	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
 		return retbytes, err
 	}
+	//
 	ciphertext := gcm.Seal(nonce, nonce, data, nil)
 	return ciphertext, nil
 }
 
+// EncrypBytesToString encrypts a byte slice (data) using the provided passphrase and returns
+// the encrypted ciphertext as a base64-encoded string, using AES in GCM (Galois/Counter Mode).
+//
+// Parameters:
+//   - data []byte: The data to be encrypted.
+//   - passphrase []byte: The passphrase used as the encryption key.
+//
+// Returns:
+//   - retbstring string: The encrypted ciphertext as a base64-encoded string.
+//   - err error: An error, if any, encountered during encryption.
 func EncrypBytesToString(data []byte, passphrase []byte) (retbstring string, err error) {
 	var gcm cipher.AEAD
 	block, _ := aes.NewCipher(MD5Bytes(passphrase))
@@ -52,7 +73,20 @@ func EncrypBytesToString(data []byte, passphrase []byte) (retbstring string, err
 	return base64.RawStdEncoding.EncodeToString(ciphertext), nil
 }
 
-// enctyp file filename (string path file or io.Writer) to byte array use hash
+// EncryptBytesToFile encrypts a byte slice (data) using the provided passphrase and writes
+// the encrypted ciphertext to a file specified by the 'filename' parameter. The 'filename'
+// can be either a string (file path) or an io.Writer. If 'filename' is an io.Writer, the
+// function writes the ciphertext directly to it. If 'filename' is a string, the function
+// creates a new file with that name and writes the ciphertext to it.
+// using AES in GCM (Galois/Counter Mode).
+//
+// Parameters:
+//   - filename interface{}: Either a string (file path) or an io.Writer.
+//   - data []byte: The data to be encrypted.
+//   - passphrase []byte: The passphrase used as the encryption key.
+//
+// Returns:
+//   - err error: An error, if any, encountered during encryption or file I/O.
 func EncryptBytesToFile(filename interface{}, data []byte, passphrase []byte) (err error) {
 	var f io.Writer
 	// *os.File
@@ -80,6 +114,17 @@ func EncryptBytesToFile(filename interface{}, data []byte, passphrase []byte) (e
 	return err
 }
 
+// EncryptFileWithRandomPassword reads the content of a file specified by 'pathfile', generates
+// a random passphrase, and encrypts the file's content with that passphrase. The encrypted
+// content is then written to a new file with a name formed by appending the passphrase to the
+// original file's name.
+// using AES in GCM (Galois/Counter Mode).
+// Parameters:
+//   - pathfile string: The path to the file to be encrypted.
+//   - dstpathprefixs ...string: Optional destination path prefix for the encrypted file.
+//
+// Returns:
+//   - err error: An error, if any, encountered during file I/O or encryption.
 func EncryptFileWithRandomPassword(pathfile string, dstpathprefixs ...string) error {
 	data, err := os.ReadFile(pathfile)
 	if err != nil {
@@ -90,19 +135,40 @@ func EncryptFileWithRandomPassword(pathfile string, dstpathprefixs ...string) er
 	if len(dstpathprefixs) != 0 {
 		pathprefix = dstpathprefixs[0]
 	}
-	pathprefix = fmt.Sprintf("%s-%s", pathprefix, passphrase)
+	pathprefix = fmt.Sprintf("%ss-nt%s", pathprefix, passphrase)
 	err = EncryptBytesToFile(pathprefix, data, []byte(passphrase))
 	return err
 }
 
+// DecryptFileWithPasswordInFileToBytes attempts to decrypt the content of a file specified by
+// 'pathfile' using a passphrase obtained from the filename itself. If the filename follows
+// the format "<original_filename>s-nt<passphrase>", it extracts the passphrase and attempts to
+// use it for decryption.
+// using AES in GCM (Galois/Counter Mode).
+// Parameters:
+//   - pathfile string: The path to the file to be decrypted.
+//
+// Returns:
+//   - data []byte: The decrypted data, if successful.
+//   - err error: An error, if any, encountered during file I/O or decryption.
 func DecryptFileWithPasswordInFileToBytes(pathfile string) (data []byte, err error) {
 	bname := filepath.Base(pathfile)
-	if _, passwd, found := strings.Cut(bname, "-"); found {
+	if _, passwd, found := strings.Cut(bname, "s-nt"); found {
 		data, err = DecryptFileToBytes(pathfile, []byte(passwd))
 	}
 	return
 }
 
+// DecryptBytes decrypts a byte slice (data) using the provided passphrase and returns
+// the decrypted plaintext using AES in GCM (Galois/Counter Mode).
+//
+// Parameters:
+//   - data []byte: The data to be decrypted.
+//   - passphrase []byte: The passphrase used as the decryption key.
+//
+// Returns:
+//   - retbytes []byte: The decrypted plaintext.
+//   - err error: An error, if any, encountered during decryption.
 func DecryptBytes(data []byte, passphrase []byte) (retbytes []byte, err error) {
 	key := MD5Bytes(passphrase)
 	block, err := aes.NewCipher(key)
@@ -133,6 +199,19 @@ func Base64Decode(datastr string) ([]byte, error) {
 	return base64.RawStdEncoding.DecodeString(datastr)
 }
 
+func Base64EncodeNoPadding(input string) string {
+	encoded := base64.StdEncoding.EncodeToString([]byte(input))
+	return strings.TrimRight(encoded, "=")
+}
+
+func Base64DecodeNoPadding(encoded string) ([]byte, error) {
+	padding := len(encoded) % 4
+	if padding > 0 {
+		encoded += strings.Repeat("=", 4-padding)
+	}
+	return base64.StdEncoding.DecodeString(encoded)
+}
+
 func DecryptBytesFromString(datastr string, passphrase []byte) (retbytes []byte, err error) {
 	var data []byte
 	data, err = base64.RawStdEncoding.DecodeString(datastr)
@@ -161,7 +240,19 @@ func DecryptFileToBytes(filename interface{}, passphrase []byte) (data []byte, e
 	return DecryptBytes(data, passphrase)
 }
 
-// decryp file filename to byte array use hash
+// DecryptFileToFile decrypts the content of a file specified by 'inputFile' using the provided
+// passphrase and writes the decrypted content to another file specified by 'outputFile'. The
+// 'inputFile' is read, decrypted using AES in GCM (Galois/Counter Mode), and the resulting
+// plaintext is written to 'outputFile'. The file permissions of 'outputFile' are set to match
+// those of 'inputFile'.
+//
+// Parameters:
+//   - inputFile string: The path to the input file to be decrypted.
+//   - outputFile string: The path to the output file where decrypted data will be written.
+//   - passphrase []byte: The passphrase used as the decryption key.
+//
+// Returns:
+//   - err error: An error, if any, encountered during file I/O, decryption, or writing to the output file.
 func DecryptFileToFile(inputFile, outputFile string, passphrase []byte) (err error) {
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
@@ -177,6 +268,47 @@ func DecryptFileToFile(inputFile, outputFile string, passphrase []byte) (err err
 		return err
 	}
 	err = os.WriteFile(outputFile, data, inputInfo.Mode().Perm())
+	return
+}
+
+// EncryptFileToFile encrypts the content of a file specified by 'inputFile' using the provided
+// passphrase and writes the encrypted content to another file specified by 'outputFile' (string
+// path) or an io.Writer. The 'inputFile' is read, encrypted using AES in GCM (Galois/Counter Mode),
+// and the resulting ciphertext is written to 'outputFile'. The file permissions of 'outputFile' (if
+// it is a string path) are set to match those of 'inputFile'.
+//
+// Parameters:
+//   - inputFile string: The path to the input file to be encrypted.
+//   - outputFile interface{}: Either a string (file path) or an io.Writer.
+//   - passphrase []byte: The passphrase used as the encryption key.
+//
+// Returns:
+//   - err error: An error, if any, encountered during file I/O, encryption, or writing to the output.
+func EncryptFileToFile(inputFile string, outputFile interface{}, passphrase []byte) (err error) {
+	data, err := os.ReadFile(inputFile)
+	if err != nil {
+		return err
+	}
+
+	var inputInfo os.FileInfo
+	inputInfo, err = os.Stat(inputFile)
+	if err != nil {
+		return
+	}
+
+	encryptedData, err := EncrypBytes(data, passphrase)
+	if err != nil {
+		return err
+	}
+
+	switch v := outputFile.(type) {
+	case string:
+		err = os.WriteFile(v, encryptedData, inputInfo.Mode().Perm())
+	case io.Writer:
+		_, err = v.Write(encryptedData)
+	default:
+		return errors.New("outputFile is of an unsupported type")
+	}
 	return
 }
 

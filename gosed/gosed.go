@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
@@ -21,7 +20,7 @@ func FileReplaceRegex(pat, tostring, filepath string, literalFlags ...bool) (err
 		literalFlag = true
 	}
 
-	allbytes, err := ioutil.ReadFile(filepath)
+	allbytes, err := os.ReadFile(filepath)
 	contenStr := string(allbytes)
 	if err != nil {
 		return err
@@ -41,7 +40,7 @@ func FileReplaceRegex(pat, tostring, filepath string, literalFlags ...bool) (err
 	if bytes.Equal([]byte(newstring), allbytes) {
 		return nil
 	} else {
-		return ioutil.WriteFile(filepath, []byte(newstring), fs.FileMode(0644))
+		return os.WriteFile(filepath, []byte(newstring), fs.FileMode(0644))
 	}
 }
 
@@ -70,7 +69,7 @@ func SedFunc(sedscript, filepath_or_string string, isFile bool) (changed bool, r
 		var fl *os.File
 		var orgcontents []byte
 
-		orgcontents, err = ioutil.ReadFile(filepath_or_string)
+		orgcontents, err = os.ReadFile(filepath_or_string)
 		if err != nil {
 			return
 		}
@@ -91,7 +90,7 @@ func SedFunc(sedscript, filepath_or_string string, isFile bool) (changed bool, r
 				return false, "", err
 			}
 
-			err = ioutil.WriteFile(filepath_or_string, buf.Bytes(), info.Mode().Perm())
+			err = os.WriteFile(filepath_or_string, buf.Bytes(), info.Mode().Perm())
 			if err != nil {
 				return false, "", err
 			}
