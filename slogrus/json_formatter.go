@@ -67,12 +67,12 @@ type JSONFormatter struct {
 // This is to not silently overwrite `time`, `msg`, `func` and `level` fields when
 // dumping it. If this code wasn't there doing:
 //
-//  logrus.WithField("level", 1).Info("hello")
+//	logrus.WithField("level", 1).Info("hello")
 //
 // Would just silently drop the user provided level. Instead with this code
 // it'll logged as:
 //
-//  {"level": "info", "fields.level": 1, "msg": "hello", "time": "..."}
+//	{"level": "info", "fields.level": 1, "msg": "hello", "time": "..."}
 //
 // It's not exported because it's still using Data in an opinionated way. It's to
 // avoid code duplication between the two default formatters.
@@ -172,9 +172,19 @@ func (f *JSONFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	msgIsJson := false
 	if !f.DisableMsgJsonOpject {
 		if msgIsJson = json.Valid([]byte(entry.Message)); !msgIsJson {
-			msgIsJson = json.Valid([]byte("{" + entry.Message + "}"))
+			testMsg := "{" + entry.Message + "}"
+			msgIsJson = json.Valid([]byte(testMsg))
 			if msgIsJson {
-				entry.Message = "{" + entry.Message + "}"
+				entry.Message = testMsg
+			} else {
+				var elements []interface{}
+				testMsg := "[" + entry.Message + "]"
+				if err := json.Unmarshal([]byte(testMsg), &elements); err == nil {
+					if len(elements) > 1 {
+						entry.Message = testMsg
+						msgIsJson = true
+					}
+				}
 			}
 		}
 	}
