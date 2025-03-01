@@ -128,9 +128,9 @@ func FIDAuto[K constraints.Ordered](fid func() K) func() K {
 		if _, ok = any(zero).(string); ok {
 			fid = any(uuid.NewString).(func() K)
 		} else if _, ok = any(zero).(uint64); ok {
-			fid = any(endec.RandUnt64).(func() K)
+			fid = any(endec.RandUint64).(func() K)
 		} else if _, ok = any(zero).(uint32); ok {
-			fid = any(endec.RandUnt32).(func() K)
+			fid = any(endec.RandUint32).(func() K)
 		}
 	}
 	return fid
