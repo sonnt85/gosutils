@@ -618,7 +618,7 @@ func RandUnt64() uint64 {
 }
 
 func RandUnt32() uint32 {
-	val, err := rand.Int(rand.Reader, big.NewInt(int64(math.MaxInt64)))
+	val, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt32))
 	if err != nil {
 		return 0
 	}
@@ -637,7 +637,7 @@ func Randint64() int64 {
 	return int64(RandUnt64())
 }
 
-func RandRangeInterger(from, to int) int {
+func RandRangeInterger(from, to int) (ret int) {
 	delta := to - from
 	if delta == 0 {
 		return from
