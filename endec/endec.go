@@ -609,7 +609,7 @@ func GenerateRandomAssci(n int, runs ...[]rune) string {
 	return string(b)
 }
 
-func RandUnt64() uint64 {
+func RandUint64() uint64 {
 	val, err := rand.Int(rand.Reader, big.NewInt(int64(math.MaxInt64)))
 	if err != nil {
 		return 0
@@ -617,8 +617,12 @@ func RandUnt64() uint64 {
 	return val.Uint64()
 }
 
-func RandUnt32() uint32 {
-	val, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt32))
+func RandInt64() int64 {
+	return int64(RandUint64())
+}
+
+func RandUint32() uint32 {
+	val, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
 	if err != nil {
 		return 0
 	}
@@ -626,15 +630,15 @@ func RandUnt32() uint32 {
 }
 
 func RandInt32() int32 {
-	return int32(RandUnt32())
+	return int32(RandUint32())
 }
 
 func RandInt() int {
-	return int(RandUnt32())
+	return int(RandUint64())
 }
 
-func Randint64() int64 {
-	return int64(RandUnt64())
+func RandUint() uint {
+	return uint(RandUint64())
 }
 
 func RandRangeInterger(from, to int) (ret int) {
@@ -642,7 +646,12 @@ func RandRangeInterger(from, to int) (ret int) {
 	if delta == 0 {
 		return from
 	}
-	return from + RandInt()%delta
+	randi := RandInt32()
+	if randi > 0 {
+		return from + int(randi)%delta
+	} else {
+		return from - int(randi)%delta
+	}
 }
 
 func RandRangeInt64(from, to int64) int64 {
@@ -650,5 +659,10 @@ func RandRangeInt64(from, to int64) int64 {
 	if delta == 0 {
 		return from
 	}
-	return from + Randint64()%delta
+	randi64 := RandUint64()
+	if randi64 > 0 {
+		return from + int64(randi64)%delta
+	} else {
+		return from - int64(randi64)%delta
+	}
 }
