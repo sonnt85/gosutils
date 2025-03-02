@@ -515,8 +515,21 @@ func sshSessionShellExecHandle(s gossh.Session) {
 			scp.ignErr = false
 			scp.inPipe = s  //.(io.WriteCloser)
 			scp.outPipe = s //.(io.ReadCloser)
+			pathServerSide := commands[len(commands)-1]
+			if runtime.GOOS == "windows" {
+				if ds, err := gofilepath.GetDrives(); err == nil {
+					for _, d := range ds {
+						if strings.HasPrefix(pathServerSide, strings.ToLower(d)+"/") ||
+							strings.HasPrefix(pathServerSide, strings.ToUpper(d)+"/") {
+							pathServerSide = strings.Replace(pathServerSide, "/", ":/", 1)
+							break
+						}
+					}
+				}
+			}
+
 			if sreflect.SlideHasElem(commands, "-t") {
-				scp.dstFile = filepath.FromSlashSmart(commands[len(commands)-1], true)
+				scp.dstFile = filepath.FromSlashSmart(pathServerSide, true)
 				if err := scpFromClient(scp); err != nil {
 					slogrus.ErrorS("Error scpFromClient: ", err)
 					// s.Stderr().Write([]byte(fmt.Sprintf("error scpFromClient: %s\n", err)))
@@ -525,7 +538,7 @@ func sshSessionShellExecHandle(s gossh.Session) {
 				return
 			}
 			if sreflect.SlideHasElem(commands, "-f") {
-				scp.srcFile = filepath.FromSlashSmart(commands[len(commands)-1], true)
+				scp.srcFile = filepath.FromSlashSmart(pathServerSide, true)
 				if err := scpToClient(scp); err != nil {
 					slogrus.ErrorS("Error scpToClient: ", err)
 					// s.Stderr().Write([]byte(fmt.Sprintf("error scpToClient: %s\n", err)))
