@@ -240,7 +240,11 @@ func sshSessionShellExecHandle(s gossh.Session) {
 							file = file + "/"
 						}
 
+						// file = strings.Replace(file, "\\", `/`, -1) + "\n"
 						file = strings.Replace(file, ":/", `/`, 1) + "\n"
+
+						// file = file + "\n"
+
 						// slogrus.DebugS(files[i], "->", file)
 						filesStr += file
 					}
@@ -776,6 +780,7 @@ func DefaultRequestHandlers(ctx gossh.Context, srv *gossh.Server, req *ssh.Reque
 // SftpHandler handler for SFTP subsystem
 func SftpHandler(sess gossh.Session) {
 	debugStream := io.Discard
+	slogrus.InfoS("SftpHandler")
 	serverOptions := []sftp.ServerOption{
 		sftp.WithDebug(debugStream),
 	}
@@ -796,18 +801,43 @@ func SftpHandler(sess gossh.Session) {
 	}
 }
 
-func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *Server {
+// NewServer creates a new SSH server instance with the provided configuration.
+//
+// Parameters:
+//   - User: The username for the SSH server. If empty, defaults to "user".
+//   - addr: The address on which the SSH server will listen. If empty, defaults to ":4444".
+//   - keypass: The password for the SSH server.
+//   - Pubkeys: The public keys for the SSH server.
+//   - opts: Optional parameters that can include:
+//   - time.Duration: Sets the server timeout. If provided twice, the second value sets the idle timeout.
+//   - bool: If true, disables the SFTP subsystem.
+//
+// Returns:
+//   - *Server: A pointer to the configured SSH server instance.
+func NewServer(User, addr, keypass, Pubkeys string, opts ...any) *Server {
 	timeout := time.Second * 60
+	idleTimeout := timeout >> 1
+	// disableSftp := false
 	server := &Server{}
-	if len(timeouts) != 0 {
-		timeout = timeouts[0]
+	flagTimeOut := false
+	if len(opts) != 0 {
+		for _, val := range opts {
+			switch v := val.(type) {
+			case time.Duration:
+				if flagTimeOut {
+					idleTimeout = v
+				} else {
+					timeout = v
+					idleTimeout = timeout >> 1
+				}
+				// case bool:
+				// 	disableSftp = v
+			}
+		}
+
 	}
 	server.MaxTimeout = timeout
-	if len(timeouts) >= 2 {
-		server.IdleTimeout = timeouts[1]
-	} else {
-		server.IdleTimeout = timeout >> 1
-	}
+	server.IdleTimeout = idleTimeout
 	//	slogrus.PrintfS("===============>server: %+v", server)
 	//	&Server{AddresListen: addr, User: User, Password: keypass}
 	if addr == "" {
@@ -822,8 +852,11 @@ func NewServer(User, addr, keypass, Pubkeys string, timeouts ...time.Duration) *
 	server.Password = keypass
 	server.Handler = sshSessionShellExecHandle
 	server.PasswordHandler = PasswordHandler
-	// server.SubsystemHandlers = map[string]gossh.SubsystemHandler{
-	// 	"sftp": SftpHandler,
+	//already set in gossh.NewServer branch soont-develop
+	// if _, e := exec.LookPath("sftp"); e != nil || !disableSftp {
+	// 	server.SubsystemHandlers = map[string]gossh.SubsystemHandler{
+	// 		"sftp": SftpHandler,
+	// 	}
 	// }
 	//	server.HostSigners = [](gossh.Signer)(gossh.NewSignerFromKey(""))
 	// server.ServerConfigCallback = func(ctx gossh.Context) (sshcfg *ssh.ServerConfig) {

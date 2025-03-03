@@ -9,13 +9,14 @@ import (
 	"crypto/rand"
 	"encoding/xml"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 
-	"github.com/mattn/go-xmpp" // BSD-3-Clause"
+	log "github.com/sirupsen/logrus"
+
+	"github.com/xmppo/go-xmpp" // BSD-3-Clause"
 )
 
 func getID() string {
