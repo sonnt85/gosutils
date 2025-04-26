@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"github.com/mattn/go-colorable"
@@ -181,8 +182,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 	if diableStdout {
 		slog.SetOutput(io.Discard)
 		if stdSlog == slog { //auto disable os.Stdout if is standard log
-			os.Stdout, _ = os.Open(os.DevNull)
-			os.Stderr, _ = os.Open(os.DevNull)
+			DisableStd()
 		}
 	} else {
 		if outputIsOsFile {
@@ -250,15 +250,42 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 			)
 			logrus.AddHook(localFileHook)
 		}
+		maxSizeKb := 1024
+		if m := os.Getenv("SLOGRUS_MAXSIZE"); m != "" {
+			if maxSizeKbTmp, e := strconv.Atoi(m); e == nil {
+				maxSizeKb = maxSizeKbTmp
+			}
+		}
+		maxAge := 31
+
+		if m := os.Getenv("SLOGRUS_MAXAGEDAYS"); m != "" {
+			if maxAgeTmp, e := strconv.Atoi(m); e == nil {
+				maxAge = maxAgeTmp
+			}
+		}
+
+		maxBackups := 32
+		if m := os.Getenv("SLOGRUS_MAXBACKUPS"); m != "" {
+			if maxBackupsTmp, e := strconv.Atoi(m); e == nil {
+				maxBackups = maxBackupsTmp
+			}
+		}
+
+		enableCompress := true
+		if m := os.Getenv("SLOGRUS_ENABLECOMPRESS"); m != "" {
+			if enableCompressTmp, e := strconv.ParseBool(m); e == nil {
+				enableCompress = enableCompressTmp
+			}
+		}
 
 		rotateFileHook := NewRotateFileHook(RotateFileConfig{
 			Filename:   logpath,
-			MaxSize:    1024, // kbytes
-			MaxBackups: 32,
-			MaxAgeDays: 31,              //days
+			MaxSize:    maxSizeKb, // kbytes
+			MaxBackups: maxBackups,
+			MaxAgeDays: maxAge,          //days
 			Level:      log_level.Level, //for file
 			Formatter:  logRuntimeFormatter,
-			Compress:   true,
+			Compress:   enableCompress,
 			BuffSize:   1024 * 10,
 		})
 		slog.rh = rotateFileHook.(*RotateFileHook)
