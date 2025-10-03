@@ -17,12 +17,12 @@ import (
 
 var defaultTimestampFormat = "2006-01-02T15:04:05.000Z07:00"
 
-//Log Level 0->panic; 1->fatal, 2->error, 3->warn, 4->info, 5->debug, 6->trace
+// Log Level 0->panic; 1->fatal, 2->error, 3->warn, 4->info, 5->debug, 6->trace
 // type Level uint32
-
+type Hook = logrus.Hook
 type Slog struct {
 	*logrus.Logger
-	rh      *RotateFileHook
+	// rh      *RotateFileHook
 	initted bool
 }
 
@@ -30,11 +30,11 @@ type Entry struct {
 	*logrus.Entry
 }
 
-func (slog Slog) WriteStd(v ...interface{}) {
+func (slog Slog) WriteStd(v ...any) {
 	slog.Out.Write([]byte(fmt.Sprint(v...)))
 }
 
-func (slog Slog) WritefStd(format string, v ...interface{}) {
+func (slog Slog) WritefStd(format string, v ...any) {
 	slog.Out.Write([]byte(fmt.Sprintf(format, v...)))
 }
 
@@ -53,7 +53,7 @@ func New(writer io.Writer) *Slog {
 }
 
 // new slog file with default stdout is os.Stderr
-func NewLogFile(logPath string, log_level Level, pretty bool, diableStdout bool, logpath ...interface{}) *Slog {
+func NewLogFile(logPath string, log_level Level, pretty bool, diableStdout bool, logpath ...any) *Slog {
 	slog := &Slog{
 		Logger: logrus.New(),
 	}
@@ -106,13 +106,13 @@ func (slog *Slog) DisableStd(msg ...any) {
 	slog.Out = io.Discard
 }
 
-func (slog *Slog) TracefStack(format string, args ...interface{}) {
+func (slog *Slog) TracefStack(format string, args ...any) {
 	args = traceStackSkip(args...)
 	format = format + "[%s]"
 	slog.Tracef(format, args...)
 }
 
-func TracefStack(format string, args ...interface{}) {
+func TracefStack(format string, args ...any) {
 	args = traceStackSkip(args...)
 	format = format + "[%s]"
 	stdSlog.Tracef(format, args...)
@@ -131,20 +131,40 @@ func (slog *Slog) GetOldLogFiles() (retpaths []string) {
 	if !slog.initted {
 		return
 	}
-	if lgr, ok := slog.rh.logWriter.(*LoggerRotate); ok {
-		return lgr.GetOldLogFiles()
+	for _, hooks := range slog.Hooks {
+		for _, hook := range hooks {
+			if lgr, ok := hook.(*RotateFileHook); ok {
+				if lg, ok := lgr.logWriter.(*LoggerRotate); ok {
+					retpaths = append(retpaths, lg.GetOldLogFiles()...)
+				}
+			}
+		}
 	}
+	// if lgr, ok := slog.rh.logWriter.(*LoggerRotate); ok {
+	// 	return lgr.GetOldLogFiles()
+	// }
 	return
 }
 
 func (slog *Slog) Flush() {
-	if !slog.initted || slog.rh == nil {
+	// if !slog.initted || slog.rh == nil {
+	if !slog.initted {
 		return
 	}
-	if lgr, ok := slog.rh.logWriter.(*LoggerRotate); ok {
-		lgr.buff.WaitUntilEmpty()
-		lgr.close()
+	for _, hooks := range slog.Hooks {
+		for _, hook := range hooks {
+			if lgr, ok := hook.(*RotateFileHook); ok {
+				if lg, ok := lgr.logWriter.(*LoggerRotate); ok {
+					lg.buff.WaitUntilEmpty()
+					lg.close()
+				}
+			}
+		}
 	}
+	// if lgr, ok := slog.rh.logWriter.(*LoggerRotate); ok {
+	// 	lgr.buff.WaitUntilEmpty()
+	// 	lgr.close()
+	// }
 }
 
 func Flush() {
@@ -165,8 +185,12 @@ func DisableOutput() {
 	stdSlog.SetOutput(io.Discard)
 }
 
-// logPath string, log_level logrus.Level, pretty bool)
-func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool, logpaths ...interface{}) {
+// logPath string, log_level logrus, pretty bool)
+func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool, logpaths ...any) {
+	if slog.initted {
+		return
+	}
+	slog.initted = true
 	logpath := ""
 	disableMsgJsonOpject := false
 	for _, x := range logpaths {
@@ -177,7 +201,6 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 			disableMsgJsonOpject = v
 		}
 	}
-	slog.initted = true
 	slogOutFile, outputIsOsFile := slog.Out.(*os.File)
 	if diableStdout {
 		slog.SetOutput(io.Discard)
@@ -193,12 +216,29 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 
 	// timeFormat := time.RFC3339 //"2006-01-02T15:04:05Z07:00"
 	timeFormat := defaultTimestampFormat //milisecond
+	orderKeys := os.Getenv("SLOGRUS_ORDER_KEYS")
+	var orderArrayKeys []string
+	if orderKeys != "" {
+		orderArrayKeys = strings.Split(orderKeys, ",")
+		for i := range orderArrayKeys {
+			orderArrayKeys[i] = strings.TrimSpace(orderArrayKeys[i])
+		}
+	} else {
+		orderArrayKeys = []string{
+			logrus.FieldKeyTime,
+			logrus.FieldKeyLevel,
+			logrus.FieldKeyMsg,
+			logrus.FieldKeyFunc,
+			logrus.FieldKeyFile,
+		}
+	}
 	logJsonFormatter := &JSONFormatter{
 		// logJsonFormatter := &logrus.JSONFormatter{
 		TimestampFormat:      timeFormat,
 		PrettyPrint:          pretty,
 		DisableHTMLEscape:    true,
 		DisableMsgJsonOpject: disableMsgJsonOpject,
+		ReorderArrayKeys:     orderArrayKeys,
 	}
 
 	logRuntimeFormatter := &FormatterRuntime{
@@ -209,7 +249,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 		// BaseNameOnly:   true,
 		// TextToSearchFun: "gosutils.slogrus.",
 	}
-	slog.SetLevel(log_level.Level)
+	slog.SetLevel(log_level)
 	if stdSlog == slog { //print to stdout standard, auto disable output if not is terminal
 		if !diableStdout {
 			if outputIsOsFile && gosystem.IsTerminal(slogOutFile.Fd()) {
@@ -219,14 +259,15 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 				// if gosystem.IsTerminalWriter(stdSlog.Out) {
 				// if (ok && (isatty.IsTerminal(fileprr.Fd()) || isatty.IsCygwinTerminal(fileprr.Fd()))) || (isatty.IsTerminal(stdoutFD) || isatty.IsCygwinTerminal(stdoutFD)) {
 				// fmt.Println("Is Terminal")
-				logStdStandardRuntimeFormatter := *logRuntimeFormatter
+				// logStdStandardRuntimeFormatter := *logRuntimeFormatter
 				logTextFormatter := &logrus.TextFormatter{
 					TimestampFormat: timeFormat,
 					FullTimestamp:   true,
 					ForceColors:     true,
-					DisableColors:   false}
-				logStdStandardRuntimeFormatter.ChildFormatter = logTextFormatter
-				slog.SetFormatter(&logStdStandardRuntimeFormatter)
+					DisableColors:   false,
+				}
+				logRuntimeFormatter.ChildFormatter = logTextFormatter
+				slog.SetFormatter(logRuntimeFormatter)
 			} else { //disable output if is not terminal
 				// fmt.Println("Not is Terminal")
 				slog.SetOutput(io.Discard)
@@ -240,7 +281,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 		if false { //for test only
 			pathMap := PathMap{}
 			for _, level := range logrus.AllLevels {
-				if level < (log_level.Level + 1) {
+				if level < (log_level + 1) {
 					pathMap[level] = logpath
 				}
 			}
@@ -282,13 +323,13 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 			Filename:   logpath,
 			MaxSize:    maxSizeKb, // kbytes
 			MaxBackups: maxBackups,
-			MaxAgeDays: maxAge,          //days
-			Level:      log_level.Level, //for file
+			MaxAgeDays: maxAge,    //days
+			Level:      log_level, //for file
 			Formatter:  logRuntimeFormatter,
 			Compress:   enableCompress,
 			BuffSize:   1024 * 10,
 		})
-		slog.rh = rotateFileHook.(*RotateFileHook)
+		// slog.rh = rotateFileHook.(*RotateFileHook)
 		slog.AddHook(rotateFileHook)
 	}
 }
@@ -299,10 +340,7 @@ func GetStandardLogger() *Slog {
 
 // log for stdout and logfile,
 // Logpaths are logpath and disable parser json msg
-func InitStandardLogger(log_level Level, pretty bool, diableStdout bool, logpaths ...interface{}) *Slog {
-	if stdSlog.initted {
-		return stdSlog
-	}
+func InitStandardLogger(log_level Level, pretty bool, diableStdout bool, logpaths ...any) *Slog {
 	// stdSlog = &Slog{
 	// 	Logger: logrus.StandardLogger(),
 	// }
@@ -324,23 +362,58 @@ func RotateSetHookCompress(h func(zipPath string) error) {
 	zipPostHook = h
 }
 
-func WithFields(fields map[string]interface{}) *Entry {
+func WithFields(fields map[string]any) *Entry {
 	return &Entry{
 		stdSlog.Logger.WithFields(logrus.Fields(fields)),
 	}
 }
 
-func UpdateFields(fields map[string]interface{}) {
-	if stdSlog.Formatter != nil {
-		if frt, ok := stdSlog.Formatter.(*FormatterRuntime); ok {
-			frt.globalFields = fields
+func (slog *Slog) RemoveFields(fields ...string) {
+	// if !slog.initted || slog.rh == nil {
+	if !slog.initted {
+		return
+	}
+	if slog.Formatter != nil {
+		if frt, ok := slog.Formatter.(*FormatterRuntime); ok {
+			for _, k := range fields {
+				if k == FunctionKey || k == PackageKey || k == LineKey || k == FileKey {
+					continue
+				}
+				delete(frt.globalFields, k)
+			}
 		}
 	}
 }
-func ResetFields() {
-	if stdSlog.Formatter != nil {
-		if frt, ok := stdSlog.Formatter.(*FormatterRuntime); ok {
-			frt.globalFields = map[string]interface{}{}
+
+func (slog *Slog) UpdateFields(fields map[string]any) {
+	if slog.Formatter != nil {
+		if frt, ok := slog.Formatter.(*FormatterRuntime); ok {
+			for k, v := range fields {
+				if k == FunctionKey || k == PackageKey || k == LineKey || k == FileKey {
+					continue
+				}
+				frt.globalFields[k] = v
+			}
 		}
 	}
+}
+
+func UpdateFields(fields map[string]any) {
+	stdSlog.UpdateFields(fields)
+}
+
+func RemoveFields(fields ...string) {
+	stdSlog.RemoveFields(fields...)
+}
+
+func (slog *Slog) ResetFields() {
+	if slog.Formatter != nil {
+		if frt, ok := slog.Formatter.(*FormatterRuntime); ok {
+			frt.globalFields = map[string]any{}
+		}
+	}
+}
+
+func ResetFields() {
+	stdSlog.ResetFields()
 }

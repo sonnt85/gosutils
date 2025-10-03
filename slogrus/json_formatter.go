@@ -61,6 +61,7 @@ type JSONFormatter struct {
 
 	// PrettyPrint will indent all json logs
 	PrettyPrint          bool
+	ReorderArrayKeys     []string
 	DisableMsgJsonOpject bool
 }
 
@@ -177,7 +178,7 @@ func (f *JSONFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 			if msgIsJson {
 				entry.Message = testMsg
 			} else {
-				var elements []interface{}
+				var elements []any
 				testMsg := "[" + entry.Message + "]"
 				if err := json.Unmarshal([]byte(testMsg), &elements); err == nil {
 					if len(elements) > 1 {
@@ -214,5 +215,61 @@ func (f *JSONFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 		}
 		return []byte(data), nil
 	}
-	return b.Bytes(), nil
+
+	orgbytes := b.Bytes()
+	retbytes, err := ReorderJSONKeys(orgbytes, f.ReorderArrayKeys)
+	if err == nil {
+		return retbytes, nil
+	} else {
+		return orgbytes, nil
+	}
+}
+
+func ReorderJSONKeys(jsonBytes []byte, keyOrder []string) ([]byte, error) {
+	if len(keyOrder) == 0 {
+		return jsonBytes, nil
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(jsonBytes, &data); err != nil {
+		return nil, err
+	}
+
+	var result strings.Builder
+	result.WriteString("\n{")
+	written := make(map[string]bool)
+	first := true
+
+	for _, key := range keyOrder {
+		if value, exists := data[key]; exists {
+			if !first {
+				result.WriteByte(',')
+			}
+			first = false
+
+			keyBytes, _ := json.Marshal(key)
+			valueBytes, _ := json.Marshal(value)
+			result.Write(keyBytes)
+			result.WriteByte(':')
+			result.Write(valueBytes)
+			written[key] = true
+		}
+	}
+
+	for key, value := range data {
+		if !written[key] {
+			if !first {
+				result.WriteByte(',')
+			}
+			first = false
+
+			keyBytes, _ := json.Marshal(key)
+			valueBytes, _ := json.Marshal(value)
+			result.Write(keyBytes)
+			result.WriteByte(':')
+			result.Write(valueBytes)
+		}
+	}
+
+	result.WriteByte('}')
+	return []byte(result.String()), nil
 }

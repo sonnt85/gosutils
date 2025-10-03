@@ -39,7 +39,7 @@ type FormatterRuntime struct {
 	// When true, only base name of the file will be tagged to fields
 	BaseNameOnly bool
 
-	globalFields map[string]interface{}
+	globalFields map[string]any
 	// TraceFlag    bool
 }
 

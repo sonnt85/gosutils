@@ -26,7 +26,7 @@ import (
 // The logFiles parameter is a list of log files to be checked and managed.
 //
 // This function returns an error (err) if any errors occur during the process of checking and managing log files.
-func RotateLogsCheck(maxFileSize, maxBackups int, maxAge interface{}, logFiles ...string) (err error) {
+func RotateLogsCheck(maxFileSize, maxBackups int, maxAge any, logFiles ...string) (err error) {
 	for _, logFile := range logFiles {
 		err = errors.Join(err, RotateLogCheck(logFile, maxFileSize, maxBackups, maxAge))
 	}
@@ -45,7 +45,7 @@ func RotateLogsCheck(maxFileSize, maxBackups int, maxAge interface{}, logFiles .
 //
 // This function operates in a loop, periodically checking log files and performing necessary log rotation actions based on the specified parameters.
 // It can be controlled and terminated using the provided context (ctx).
-func RotateLogsMonitor(ctx context.Context, period time.Duration, maxFileSize, maxBackups int, maxAge interface{}, logFiles ...string) {
+func RotateLogsMonitor(ctx context.Context, period time.Duration, maxFileSize, maxBackups int, maxAge any, logFiles ...string) {
 	if len(logFiles) == 0 {
 		return
 	}
@@ -79,7 +79,7 @@ func RotateLogsMonitor(ctx context.Context, period time.Duration, maxFileSize, m
 // The logFile parameter specifies the path to the log file that needs to be checked and managed.
 //
 // This function returns an error (err) if any errors occur during the process of checking and managing the log file.
-func RotateLogCheck(logFile string, maxFileSize, maxBackups int, maxAge interface{}) (err error) {
+func RotateLogCheck(logFile string, maxFileSize, maxBackups int, maxAge any) (err error) {
 	// Check the size of the log file
 	var fileInfo fs.FileInfo
 	fileInfo, err = os.Stat(logFile)
@@ -127,9 +127,7 @@ func RotateLogCheck(logFile string, maxFileSize, maxBackups int, maxAge interfac
 			// Only count the uncompressed log file or the
 			// compressed log file, not both.
 			fn := f.Name()
-			if strings.HasSuffix(fn, compressSuffix) {
-				fn = fn[:len(fn)-len(compressSuffix)]
-			}
+			fn = strings.TrimSuffix(fn, compressSuffix)
 			preserved[fn] = true
 
 			if len(preserved) > maxBackups {
@@ -141,12 +139,12 @@ func RotateLogCheck(logFile string, maxFileSize, maxBackups int, maxAge interfac
 		files = remaining
 	}
 	var maxAgeDuration time.Duration
-	switch maxAge.(type) {
+	switch v := maxAge.(type) {
 	case int:
-		days := maxAge.(int)
+		days := v
 		maxAgeDuration = time.Duration(days) * 24 * time.Hour
 	case time.Duration:
-		maxAgeDuration = maxAge.(time.Duration)
+		maxAgeDuration = v
 	}
 
 	if maxAgeDuration > 0 {
@@ -320,7 +318,7 @@ func GetOriginLogFiles(dir, patternRegex string, maxdeep int) (logFiles []string
 // The logDirs parameter is a list of directory paths to be checked and managed.
 //
 // This function returns an error (err) if any errors occur during the process of checking and managing log directories.
-func RotateDirsCheck(maxFileSize, maxBackups int, maxAge interface{}, patternRegex string, maxdeep int, logDirs ...string) (err error) {
+func RotateDirsCheck(maxFileSize, maxBackups int, maxAge any, patternRegex string, maxdeep int, logDirs ...string) (err error) {
 	for _, dir := range logDirs {
 		for _, logFile := range GetOriginLogFiles(dir, patternRegex, maxdeep) {
 			// fmt.Printf("checking file: %s\n", logFile)
@@ -345,7 +343,7 @@ func RotateDirsCheck(maxFileSize, maxBackups int, maxAge interface{}, patternReg
 //
 // This function operates in a loop, periodically checking log directories and performing necessary log rotation actions based on the specified parameters.
 // It can be controlled and terminated using the provided context (ctx).
-func RotateDirsMonitor(ctx context.Context, period time.Duration, maxFileSize, maxBackups int, maxAge interface{}, patternRegex string, maxdeep int, logDirs ...string) {
+func RotateDirsMonitor(ctx context.Context, period time.Duration, maxFileSize, maxBackups int, maxAge any, patternRegex string, maxdeep int, logDirs ...string) {
 	if len(logDirs) == 0 {
 		return
 	}

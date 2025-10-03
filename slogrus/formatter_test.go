@@ -106,7 +106,7 @@ func expectFunction(t *testing.T, decoder *json.Decoder, expectedPackage string,
 	_package := data[PackageKey]
 	function := data[FunctionKey]
 	line := data[LineKey]
-	file, _ := data[FileKey]
+	file := data[FileKey]
 
 	if _package != expectedPackage {
 		t.Fatalf("Expected package: %s, got: %s", expectedPackage, _package)

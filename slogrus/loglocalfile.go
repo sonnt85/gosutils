@@ -40,32 +40,28 @@ type LfHook struct {
 // NewHook returns new LFS hook.
 // Output can be a string, io.Writer, WriterMap or PathMap.
 // If using io.Writer or WriterMap, user is responsible for closing the used io.Writer.
-func NewLocalFileHook(output interface{}, formatter logrus.Formatter) *LfHook {
+func NewLocalFileHook(output any, formatter logrus.Formatter) *LfHook {
 	hook := &LfHook{
 		lock: new(sync.Mutex),
 	}
 
 	hook.SetFormatter(formatter)
 
-	switch output.(type) {
+	switch o := output.(type) {
 	case string:
-		hook.SetDefaultPath(output.(string))
-		break
+		hook.SetDefaultPath(o)
 	case io.Writer:
-		hook.SetDefaultWriter(output.(io.Writer))
-		break
+		hook.SetDefaultWriter(o)
 	case PathMap:
-		hook.paths = output.(PathMap)
-		for level := range output.(PathMap) {
+		hook.paths = o
+		for level := range o {
 			hook.levels = append(hook.levels, level)
 		}
-		break
 	case WriterMap:
-		hook.writers = output.(WriterMap)
-		for level := range output.(WriterMap) {
+		hook.writers = o
+		for level := range o {
 			hook.levels = append(hook.levels, level)
 		}
-		break
 	default:
 		panic(fmt.Sprintf("unsupported level map type: %v", reflect.TypeOf(output)))
 	}
@@ -81,10 +77,9 @@ func (hook *LfHook) SetFormatter(formatter logrus.Formatter) {
 	if formatter == nil {
 		formatter = defaultFormatter
 	} else {
-		switch formatter.(type) {
+		switch o := formatter.(type) {
 		case *logrus.TextFormatter:
-			textFormatter := formatter.(*logrus.TextFormatter)
-			textFormatter.DisableColors = true
+			o.DisableColors = true
 		}
 	}
 

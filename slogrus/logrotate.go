@@ -37,7 +37,7 @@ const (
 	// backupTimeFormat = "2006-01-22T15-04-05.000"
 	backupTimeFormat = "2006_01_02T15_04_05.000Z0700"
 	compressSuffix   = ".gz"
-	defaultMaxSize   = 10240
+	defaultMaxKbSize = 10240
 )
 
 // ensure we always implement io.WriteCloser
@@ -125,7 +125,7 @@ var (
 	// megabyte is the conversion factor between MaxSize and bytes.  It is a
 	// variable so tests can mock it out and not need to write megabytes of data
 	// to disk.
-	megabyte    = 1024 * 1024
+	// megabyte    = 1024 * 1024
 	kilobyte    = 1024
 	zipPostHook func(zipPath string) error
 )
@@ -333,9 +333,7 @@ func (l *LoggerRotate) millRunOnce() error {
 			// Only count the uncompressed log file or the
 			// compressed log file, not both.
 			fn := f.Name()
-			if strings.HasSuffix(fn, compressSuffix) {
-				fn = fn[:len(fn)-len(compressSuffix)]
-			}
+			fn = strings.TrimSuffix(fn, compressSuffix)
 			preserved[fn] = true
 
 			if len(preserved) > l.MaxBackups {
@@ -375,6 +373,7 @@ func (l *LoggerRotate) millRunOnce() error {
 			err = errRemove
 		}
 	}
+
 	for _, f := range compress {
 		fn := filepath.Join(l.dir(), f.Name())
 		zipname := fn + compressSuffix
@@ -486,7 +485,7 @@ func (l *LoggerRotate) timeFromName(filename, prefix, ext string) (time.Time, er
 // max returns the maximum size in bytes of log files before rolling.
 func (l *LoggerRotate) max() int64 {
 	if l.MaxSize == 0 {
-		return int64(defaultMaxSize * kilobyte)
+		return int64(defaultMaxKbSize * kilobyte)
 	}
 	return int64(l.MaxSize) * int64(kilobyte)
 }
@@ -550,6 +549,9 @@ func NewRotateFileHook(config RotateFileConfig) logrus.Hook {
 }
 
 func (hook *RotateFileHook) Levels() []logrus.Level {
+	if hook.Config.Level >= 100 {
+		return []logrus.Level{100 - hook.Config.Level}
+	}
 	return logrus.AllLevels[:hook.Config.Level+1]
 }
 
