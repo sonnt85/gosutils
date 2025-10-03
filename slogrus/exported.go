@@ -263,8 +263,14 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 		ForceColors:     false,
 		DisableColors:   false,
 	}
+	logTextFormatterStd := &logrus.TextFormatter{
+		TimestampFormat: timeFormat,
+		FullTimestamp:   true,
+		ForceColors:     false,
+		DisableColors:   false,
+	}
 	logRuntimeFormatterStd := *logRuntimeFormatter
-	logRuntimeFormatterStd.ChildFormatter = logTextFormatter
+	logRuntimeFormatterStd.ChildFormatter = logTextFormatterStd
 	if !disableJson {
 		logJsonFormatter := &JSONFormatter{
 			TimestampFormat:      timeFormat,
@@ -282,6 +288,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 		if !diableStdout {
 			if outputIsOsFile && gosystem.IsTerminal(slogOutFile.Fd()) {
 				// if gosystem.IsTerminalWriter(stdSlog.Out) {
+				logTextFormatterStd.ForceColors = true
 				slog.SetFormatter(&logRuntimeFormatterStd)
 			} else {
 				slog.SetOutput(io.Discard)
