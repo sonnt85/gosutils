@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"runtime"
-	"strings"
+	"sort"
 
 	"github.com/sirupsen/logrus"
 	"github.com/sonnt85/gosutils/ppjson"
@@ -170,106 +171,93 @@ func (f *JSONFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 		b = &bytes.Buffer{}
 	}
 
-	msgIsJson := false
+	canConvertMsgToJson := true
 	if !f.DisableMsgJsonOpject {
-		if msgIsJson = json.Valid([]byte(entry.Message)); !msgIsJson {
+		if canConvertMsgToJson = json.Valid([]byte(entry.Message)); !canConvertMsgToJson {
 			testMsg := "{" + entry.Message + "}"
-			msgIsJson = json.Valid([]byte(testMsg))
-			if msgIsJson {
-				entry.Message = testMsg
-			} else {
-				var elements []any
-				testMsg := "[" + entry.Message + "]"
-				if err := json.Unmarshal([]byte(testMsg), &elements); err == nil {
-					if len(elements) > 1 {
-						entry.Message = testMsg
-						msgIsJson = true
-					}
+			if canConvertMsgToJson = json.Valid([]byte(testMsg)); !canConvertMsgToJson {
+				testMsg = "[" + entry.Message + "]"
+				if canConvertMsgToJson = json.Valid([]byte(testMsg)); canConvertMsgToJson {
+					entry.Message = testMsg
 				}
 			}
 		}
 	}
 
-	if !msgIsJson {
-		data[f.FieldMap.resolve(logrus.FieldKeyMsg)] = entry.Message
-	}
-
-	encoder := json.NewEncoder(b)
-	encoder.SetEscapeHTML(!f.DisableHTMLEscape)
-	if f.PrettyPrint && !msgIsJson {
-		encoder.SetIndent("", "  ")
-	}
-	if err := encoder.Encode(data); err != nil {
-		return nil, fmt.Errorf("failed to marshal fields to JSON, %w", err)
-	}
-	if msgIsJson {
-		var err error
-		data := b.String()
-		data = strings.TrimRight(data, "\n} \t")
-		data = data + fmt.Sprintf(`,"%s":%s}`, f.FieldMap.resolve(logrus.FieldKeyMsg), entry.Message)
-		if f.PrettyPrint {
-			data, err = ppjson.FormatString(data, "  ")
-			if err != nil {
-				return nil, err
-			}
+	if !f.DisableMsgJsonOpject && canConvertMsgToJson {
+		var msgObj any
+		if err := json.Unmarshal([]byte(entry.Message), &msgObj); err == nil {
+			data[FieldKeyMsg] = msgObj
+		} else {
+			data[FieldKeyMsg] = entry.Message
 		}
-		return []byte(data), nil
-	}
-
-	orgbytes := b.Bytes()
-	retbytes, err := ReorderJSONKeys(orgbytes, f.ReorderArrayKeys)
-	if err == nil {
-		return retbytes, nil
 	} else {
-		return orgbytes, nil
+		data[f.FieldMap.resolve(FieldKeyMsg)] = entry.Message
 	}
+	err := ReorderJSONKeys(data, b, f.ReorderArrayKeys, f.DisableHTMLEscape)
+	if err != nil {
+		return []byte{}, err
+	}
+	if f.PrettyPrint {
+		str, err := ppjson.FormatString(b.String(), "  ")
+		if err == nil {
+			return []byte(str), nil
+		}
+	}
+	return b.Bytes(), nil
 }
 
-func ReorderJSONKeys(jsonBytes []byte, keyOrder []string) ([]byte, error) {
+func ReorderJSONKeys(data map[string]any, buf io.Writer, keyOrder []string, disableHTMLEscape bool) error {
 	if len(keyOrder) == 0 {
-		return jsonBytes, nil
+		encoder := json.NewEncoder(buf)
+		encoder.SetEscapeHTML(!disableHTMLEscape)
+		if err := encoder.Encode(data); err != nil {
+			return err
+		}
+		return nil
 	}
-	var data map[string]interface{}
-	if err := json.Unmarshal(jsonBytes, &data); err != nil {
-		return nil, err
+	if buf == nil {
+		buf = &bytes.Buffer{}
 	}
-
-	var result strings.Builder
-	result.WriteString("\n{")
-	written := make(map[string]bool)
+	buf.Write([]byte{'\n'})
+	buf.Write([]byte{'{'})
 	first := true
+	remainingKeys := make([]string, 0)
 
 	for _, key := range keyOrder {
 		if value, exists := data[key]; exists {
 			if !first {
-				result.WriteByte(',')
+				buf.Write([]byte{','})
 			}
 			first = false
 
 			keyBytes, _ := json.Marshal(key)
 			valueBytes, _ := json.Marshal(value)
-			result.Write(keyBytes)
-			result.WriteByte(':')
-			result.Write(valueBytes)
-			written[key] = true
+			buf.Write(keyBytes)
+			buf.Write([]byte{':'})
+			buf.Write(valueBytes)
+		} else {
+			remainingKeys = append(remainingKeys, key)
 		}
 	}
 
-	for key, value := range data {
-		if !written[key] {
-			if !first {
-				result.WriteByte(',')
-			}
-			first = false
+	// Sort the remaining keys
+	sort.Strings(remainingKeys)
 
-			keyBytes, _ := json.Marshal(key)
-			valueBytes, _ := json.Marshal(value)
-			result.Write(keyBytes)
-			result.WriteByte(':')
-			result.Write(valueBytes)
+	// Write the sorted remaining keys
+	for _, key := range remainingKeys {
+		if !first {
+			buf.Write([]byte{','})
 		}
+		first = false
+
+		keyBytes, _ := json.Marshal(key)
+		valueBytes, _ := json.Marshal(data[key])
+		buf.Write(keyBytes)
+		buf.Write([]byte{':'})
+		buf.Write(valueBytes)
 	}
 
-	result.WriteByte('}')
-	return []byte(result.String()), nil
+	buf.Write([]byte{'}'})
+	return nil
 }
