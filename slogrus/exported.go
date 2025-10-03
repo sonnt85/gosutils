@@ -394,6 +394,9 @@ func (slog *Slog) UpdateFields(fields map[string]any) {
 				if k == FunctionKey || k == PackageKey || k == LineKey || k == FileKey {
 					continue
 				}
+				if frt.globalFields == nil {
+					frt.globalFields = map[string]any{}
+				}
 				frt.globalFields[k] = v
 			}
 		}
