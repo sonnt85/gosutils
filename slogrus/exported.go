@@ -226,12 +226,19 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 			}
 		} else {
 			orderArrayKeys = []string{
-				logrus.FieldKeyTime,
-				logrus.FieldKeyLevel,
-				logrus.FieldKeyMsg,
-				logrus.FieldKeyFunc,
-				logrus.FieldKeyFile,
+				FieldKeyTime,
+				FieldKeyLevel,
+				FieldKeyMsg,
+				FieldKeyFunc,
+				FieldKeyFile,
 			}
+		}
+	}
+	rootDir := os.Getenv("SLOGRUS_ORDER_ROOT_DIR")
+	baseNameOnly := false
+	if os.Getenv("SLOGRUS_BASENAMEONLY") != "" {
+		if b, e := strconv.ParseBool(os.Getenv("SLOGRUS_BASENAMEONLY")); e == nil {
+			baseNameOnly = b
 		}
 	}
 	logJsonFormatter := &JSONFormatter{
@@ -248,7 +255,8 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 		File:           true,
 		Line:           true,
 		Package:        false,
-		// BaseNameOnly:   true,
+		BaseNameOnly:   baseNameOnly,
+		RootDir:        rootDir,
 		// TextToSearchFun: "gosutils.slogrus.",
 	}
 	slog.SetLevel(log_level)
@@ -378,7 +386,7 @@ func (slog *Slog) RemoveFields(fields ...string) {
 	if slog.Formatter != nil {
 		if frt, ok := slog.Formatter.(*FormatterRuntime); ok {
 			for _, k := range fields {
-				if k == FunctionKey || k == PackageKey || k == LineKey || k == FileKey {
+				if k == FieldKeyFunc || k == FieldKeyPakage || k == FieldKeyLine || k == FieldKeyFile {
 					continue
 				}
 				delete(frt.globalFields, k)
@@ -391,7 +399,7 @@ func (slog *Slog) UpdateFields(fields map[string]any) {
 	if slog.Formatter != nil {
 		if frt, ok := slog.Formatter.(*FormatterRuntime); ok {
 			for k, v := range fields {
-				if k == FunctionKey || k == PackageKey || k == LineKey || k == FileKey {
+				if k == FieldKeyFunc || k == FieldKeyPakage || k == FieldKeyLine || k == FieldKeyFile {
 					continue
 				}
 				if frt.globalFields == nil {

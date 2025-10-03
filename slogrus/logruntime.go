@@ -9,17 +9,15 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// FunctionKey holds the function field
-const FunctionKey = "function"
-
-// PackageKey holds the package field
-const PackageKey = "package"
-
-// LineKey holds the line field
-const LineKey = "line"
-
-// FileKey holds the file field
-const FileKey = "file"
+// FieldKeyPakage holds the package field
+const FieldKeyPakage = "package"
+const FieldKeyLine = "line"
+const FieldKeyFile = logrus.FieldKeyFile               // "file"
+const FieldKeyMsg = logrus.FieldKeyMsg                 // "msg"
+const FieldKeyLevel = logrus.FieldKeyLevel             // "level"
+const FieldKeyTime = logrus.FieldKeyTime               // "time"
+const FieldKeyLogrusError = logrus.FieldKeyLogrusError // "logrus_error"
+const FieldKeyFunc = logrus.FieldKeyFunc               // "func"
 
 const (
 	logrusStackJump          = 4
@@ -39,6 +37,8 @@ type FormatterRuntime struct {
 	// When true, only base name of the file will be tagged to fields
 	BaseNameOnly bool
 
+	RootDir string
+
 	globalFields map[string]any
 	// TraceFlag    bool
 }
@@ -50,19 +50,30 @@ func (f *FormatterRuntime) Format(entry *logrus.Entry) ([]byte, error) {
 	packageEnd := strings.LastIndex(function, ".")
 	functionName := function[packageEnd+1:]
 
-	data := logrus.Fields{FunctionKey: functionName}
+	data := logrus.Fields{FieldKeyFunc: functionName}
 	if f.Line {
-		data[LineKey] = line
+		data[FieldKeyLine] = line
 	}
 	if f.Package {
 		packageName := function[:packageEnd]
-		data[PackageKey] = packageName
+		data[FieldKeyPakage] = packageName
 	}
 	if f.File {
 		if f.BaseNameOnly {
-			data[FileKey] = filepath.Base(file)
+			flagNoErr := false
+			if f.RootDir != "" {
+				relFile, err := filepath.Rel(f.RootDir, file)
+				if err == nil {
+					file = relFile
+					flagNoErr = true
+				}
+			}
+			if !flagNoErr {
+				data[FieldKeyFile] = filepath.Base(file)
+			}
+			// data[FieldKeyFile] = filepath.Base(file)
 		} else {
-			data[FileKey] = file
+			data[FieldKeyFile] = file
 		}
 	}
 	for k, v := range f.globalFields {

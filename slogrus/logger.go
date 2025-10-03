@@ -53,20 +53,20 @@ type Level = logrus.Level
 
 // The levels of logs.
 const (
-	LevelPanic = logrus.PanicLevel
-	LevelTrace
-	LevelDebug
-	LevelInfo
-	LevelWarn
-	LevelError
-	LevelFatal
+	LevelPanic     = logrus.PanicLevel
+	LevelFatal     = logrus.FatalLevel
+	LevelError     = logrus.ErrorLevel
+	LevelWarn      = logrus.WarnLevel
+	LevelInfo      = logrus.InfoLevel
+	LevelDebug     = logrus.DebugLevel
+	LevelTrace     = logrus.TraceLevel
 	LevelPanicOnly = logrus.PanicLevel + 100
-	LevelTraceOnly
-	LevelDebugOnly
-	LevelInfoOnly
-	LevelWarnOnly
-	LevelErrorOnly
-	LevelFatalOnly
+	LevelFatalOnly = logrus.FatalLevel + 100
+	LevelErrorOnly = logrus.ErrorLevel + 100
+	LevelWarnOnly  = logrus.WarnLevel + 100
+	LevelInfoOnly  = logrus.InfoLevel + 100
+	LevelDebugOnly = logrus.DebugLevel + 100
+	LevelTraceOnly = logrus.TraceLevel + 100
 )
 
 const levelOfDefaultLogger = LevelPanic // level for default logger

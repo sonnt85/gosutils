@@ -78,25 +78,25 @@ type JSONFormatter struct {
 // It's not exported because it's still using Data in an opinionated way. It's to
 // avoid code duplication between the two default formatters.
 func prefixFieldClashes(data logrus.Fields, fieldMap FieldMap, reportCaller bool) {
-	timeKey := fieldMap.resolve(logrus.FieldKeyTime)
+	timeKey := fieldMap.resolve(FieldKeyTime)
 	if t, ok := data[timeKey]; ok {
 		data["fields."+timeKey] = t
 		delete(data, timeKey)
 	}
 
-	msgKey := fieldMap.resolve(logrus.FieldKeyMsg)
+	msgKey := fieldMap.resolve(FieldKeyMsg)
 	if m, ok := data[msgKey]; ok {
 		data["fields."+msgKey] = m
 		delete(data, msgKey)
 	}
 
-	levelKey := fieldMap.resolve(logrus.FieldKeyLevel)
+	levelKey := fieldMap.resolve(FieldKeyLevel)
 	if l, ok := data[levelKey]; ok {
 		data["fields."+levelKey] = l
 		delete(data, levelKey)
 	}
 
-	logrusErrKey := fieldMap.resolve(logrus.FieldKeyLogrusError)
+	logrusErrKey := fieldMap.resolve(FieldKeyLogrusError)
 	if l, ok := data[logrusErrKey]; ok {
 		data["fields."+logrusErrKey] = l
 		delete(data, logrusErrKey)
@@ -104,11 +104,11 @@ func prefixFieldClashes(data logrus.Fields, fieldMap FieldMap, reportCaller bool
 
 	// If reportCaller is not set, 'func' will not conflict.
 	if reportCaller {
-		funcKey := fieldMap.resolve(logrus.FieldKeyFunc)
+		funcKey := fieldMap.resolve(FieldKeyFunc)
 		if l, ok := data[funcKey]; ok {
 			data["fields."+funcKey] = l
 		}
-		fileKey := fieldMap.resolve(logrus.FieldKeyFile)
+		fileKey := fieldMap.resolve(FieldKeyFile)
 		if l, ok := data[fileKey]; ok {
 			data["fields."+fileKey] = l
 		}
@@ -143,12 +143,12 @@ func (f *JSONFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	}
 	//check internal logrus error
 	// if entry.err != "" {
-	// 	data[f.FieldMap.resolve(logrus.FieldKeyLogrusError)] = entry.err
+	// 	data[f.FieldMap.resolve(FieldKeyLogrusError)] = entry.err
 	// }
 	if !f.DisableTimestamp {
-		data[f.FieldMap.resolve(logrus.FieldKeyTime)] = entry.Time.Format(timestampFormat)
+		data[f.FieldMap.resolve(FieldKeyTime)] = entry.Time.Format(timestampFormat)
 	}
-	data[f.FieldMap.resolve(logrus.FieldKeyLevel)] = entry.Level.String()
+	data[f.FieldMap.resolve(FieldKeyLevel)] = entry.Level.String()
 	if entry.HasCaller() {
 		funcVal := entry.Caller.Function
 		fileVal := fmt.Sprintf("%s:%d", entry.Caller.File, entry.Caller.Line)
@@ -156,10 +156,10 @@ func (f *JSONFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 			funcVal, fileVal = f.CallerPrettyfier(entry.Caller)
 		}
 		if funcVal != "" {
-			data[f.FieldMap.resolve(logrus.FieldKeyFunc)] = funcVal
+			data[f.FieldMap.resolve(FieldKeyFunc)] = funcVal
 		}
 		if fileVal != "" {
-			data[f.FieldMap.resolve(logrus.FieldKeyFile)] = fileVal
+			data[f.FieldMap.resolve(FieldKeyFile)] = fileVal
 		}
 	}
 
