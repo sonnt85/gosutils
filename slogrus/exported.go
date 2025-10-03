@@ -234,73 +234,64 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 			}
 		}
 	}
-	rootDir := os.Getenv("SLOGRUS_ORDER_ROOT_DIR")
+	rootSourceDir := os.Getenv("SLOGRUS_ROOTDIR")
 	baseNameOnly := false
 	if os.Getenv("SLOGRUS_BASENAMEONLY") != "" {
 		if b, e := strconv.ParseBool(os.Getenv("SLOGRUS_BASENAMEONLY")); e == nil {
 			baseNameOnly = b
 		}
 	}
-	logJsonFormatter := &JSONFormatter{
-		// logJsonFormatter := &logrus.JSONFormatter{
-		TimestampFormat:      timeFormat,
-		PrettyPrint:          pretty,
-		DisableHTMLEscape:    true,
-		DisableMsgJsonOpject: disableMsgJsonOpject,
-		ReorderArrayKeys:     orderArrayKeys,
+	disableJson := false
+	if os.Getenv("SLOGRUS_DISABLEJSON") != "" {
+		if b, e := strconv.ParseBool(os.Getenv("SLOGRUS_DISABLEJSON")); e == nil {
+			disableJson = b
+		}
 	}
 
 	logRuntimeFormatter := &FormatterRuntime{
-		ChildFormatter: logJsonFormatter,
-		File:           true,
-		Line:           true,
-		Package:        false,
-		BaseNameOnly:   baseNameOnly,
-		RootDir:        rootDir,
+		// ChildFormatter: logJsonFormatter,
+		File:         true,
+		Line:         true,
+		Package:      false,
+		BaseNameOnly: baseNameOnly,
+		RootDir:      rootSourceDir,
 		// TextToSearchFun: "gosutils.slogrus.",
+	}
+	logTextFormatter := &logrus.TextFormatter{
+		TimestampFormat: timeFormat,
+		FullTimestamp:   true,
+		ForceColors:     false,
+		DisableColors:   false,
+	}
+	logRuntimeFormatterStd := *logRuntimeFormatter
+	logRuntimeFormatterStd.ChildFormatter = logTextFormatter
+	if !disableJson {
+		logJsonFormatter := &JSONFormatter{
+			TimestampFormat:      timeFormat,
+			PrettyPrint:          pretty,
+			DisableHTMLEscape:    true,
+			DisableMsgJsonOpject: disableMsgJsonOpject,
+			ReorderArrayKeys:     orderArrayKeys,
+		}
+		logRuntimeFormatter.ChildFormatter = logJsonFormatter
+	} else {
+		logRuntimeFormatter.ChildFormatter = logTextFormatter
 	}
 	slog.SetLevel(log_level)
 	if stdSlog == slog { //print to stdout standard, auto disable output if not is terminal
 		if !diableStdout {
 			if outputIsOsFile && gosystem.IsTerminal(slogOutFile.Fd()) {
-				// fmt.Println("Is Terminal")
-
-				// if gosystem.IsTerminalWriter(stdSlog.Out) || (os.Getenv(DEBUGENVNAME) == "true" && runtime.GOOS == "windows" || gosystem.IsTerminal(os.Stderr.Fd())) {
 				// if gosystem.IsTerminalWriter(stdSlog.Out) {
-				// if (ok && (isatty.IsTerminal(fileprr.Fd()) || isatty.IsCygwinTerminal(fileprr.Fd()))) || (isatty.IsTerminal(stdoutFD) || isatty.IsCygwinTerminal(stdoutFD)) {
-				// fmt.Println("Is Terminal")
-				// logStdStandardRuntimeFormatter := *logRuntimeFormatter
-				logTextFormatter := &logrus.TextFormatter{
-					TimestampFormat: timeFormat,
-					FullTimestamp:   true,
-					ForceColors:     true,
-					DisableColors:   false,
-				}
-				logRuntimeFormatter.ChildFormatter = logTextFormatter
-				slog.SetFormatter(logRuntimeFormatter)
-			} else { //disable output if is not terminal
-				// fmt.Println("Not is Terminal")
+				slog.SetFormatter(&logRuntimeFormatterStd)
+			} else {
 				slog.SetOutput(io.Discard)
 			}
 		}
 	} else {
-		slog.SetFormatter(logRuntimeFormatter)
+		slog.SetFormatter(&logRuntimeFormatterStd)
 	}
 
 	if len(logpath) != 0 { //hook rotation
-		if false { //for test only
-			pathMap := PathMap{}
-			for _, level := range logrus.AllLevels {
-				if level < (log_level + 1) {
-					pathMap[level] = logpath
-				}
-			}
-			localFileHook := NewLocalFileHook(
-				pathMap,
-				logJsonFormatter,
-			)
-			logrus.AddHook(localFileHook)
-		}
 		maxSizeKb := 1024
 		if m := os.Getenv("SLOGRUS_MAXSIZE"); m != "" {
 			if maxSizeKbTmp, e := strconv.Atoi(m); e == nil {

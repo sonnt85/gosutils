@@ -59,19 +59,19 @@ func (f *FormatterRuntime) Format(entry *logrus.Entry) ([]byte, error) {
 		data[FieldKeyPakage] = packageName
 	}
 	if f.File {
-		if f.BaseNameOnly {
-			flagNoErr := false
+		if f.BaseNameOnly || f.RootDir != "" {
+			needBasePath := true
 			if f.RootDir != "" {
 				relFile, err := filepath.Rel(f.RootDir, file)
 				if err == nil {
 					file = relFile
-					flagNoErr = true
+					needBasePath = false
 				}
 			}
-			if !flagNoErr {
-				data[FieldKeyFile] = filepath.Base(file)
+			if needBasePath {
+				file = filepath.Base(file)
 			}
-			// data[FieldKeyFile] = filepath.Base(file)
+			data[FieldKeyFile] = file
 		} else {
 			data[FieldKeyFile] = file
 		}
