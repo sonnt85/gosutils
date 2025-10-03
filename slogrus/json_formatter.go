@@ -222,10 +222,11 @@ func ReorderJSONKeys(data map[string]any, buf io.Writer, keyOrder []string, disa
 	buf.Write([]byte{'\n'})
 	buf.Write([]byte{'{'})
 	first := true
-	remainingKeys := make([]string, 0)
+	processedKeys := make(map[string]bool)
 
 	for _, key := range keyOrder {
 		if value, exists := data[key]; exists {
+			processedKeys[key] = true
 			if !first {
 				buf.Write([]byte{','})
 			}
@@ -236,7 +237,13 @@ func ReorderJSONKeys(data map[string]any, buf io.Writer, keyOrder []string, disa
 			buf.Write(keyBytes)
 			buf.Write([]byte{':'})
 			buf.Write(valueBytes)
-		} else {
+		}
+	}
+
+	// Collect remaining keys (those in data but not processed yet)
+	remainingKeys := make([]string, 0, len(data)-len(processedKeys))
+	for key := range data {
+		if !processedKeys[key] {
 			remainingKeys = append(remainingKeys, key)
 		}
 	}
