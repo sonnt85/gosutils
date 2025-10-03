@@ -220,16 +220,18 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 	var orderArrayKeys []string
 	if orderKeys != "" {
 		orderArrayKeys = strings.Split(orderKeys, ",")
-		for i := range orderArrayKeys {
-			orderArrayKeys[i] = strings.TrimSpace(orderArrayKeys[i])
-		}
-	} else {
-		orderArrayKeys = []string{
-			logrus.FieldKeyTime,
-			logrus.FieldKeyLevel,
-			logrus.FieldKeyMsg,
-			logrus.FieldKeyFunc,
-			logrus.FieldKeyFile,
+		if len(orderArrayKeys) != 0 {
+			for i := range orderArrayKeys {
+				orderArrayKeys[i] = strings.TrimSpace(orderArrayKeys[i])
+			}
+		} else {
+			orderArrayKeys = []string{
+				logrus.FieldKeyTime,
+				logrus.FieldKeyLevel,
+				logrus.FieldKeyMsg,
+				logrus.FieldKeyFunc,
+				logrus.FieldKeyFile,
+			}
 		}
 	}
 	logJsonFormatter := &JSONFormatter{
