@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mattn/go-colorable"
+	"github.com/sonnt85/gosutils/smerge"
 	"github.com/sonnt85/gosystem"
 
 	// "github.com/mattn/go-isatty"
@@ -22,8 +23,8 @@ var defaultTimestampFormat = "2006-01-02T15:04:05.000Z07:00"
 type Hook = logrus.Hook
 type Slog struct {
 	*logrus.Logger
-	// rh      *RotateFileHook
-	initted bool
+	globalFields map[string]any
+	initted      bool
 }
 
 type Entry struct {
@@ -191,6 +192,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 		return
 	}
 	slog.initted = true
+	slog.globalFields = make(map[string]any)
 	logpath := ""
 	disableMsgJsonOpject := false
 	for _, x := range logpaths {
@@ -255,6 +257,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 		Package:      false,
 		BaseNameOnly: baseNameOnly,
 		RootDir:      rootSourceDir,
+		globalFields: slog.globalFields,
 		// TextToSearchFun: "gosutils.slogrus.",
 	}
 	logTextFormatter := &logrus.TextFormatter{
@@ -271,6 +274,7 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 	}
 	logRuntimeFormatterStd := *logRuntimeFormatter
 	logRuntimeFormatterStd.ChildFormatter = logTextFormatterStd
+	logRuntimeFormatterStd.globalFields = stdSlog.globalFields
 	if !disableJson {
 		logJsonFormatter := &JSONFormatter{
 			TimestampFormat:      timeFormat,
@@ -286,13 +290,14 @@ func initDefaultLog(slog *Slog, log_level Level, pretty bool, diableStdout bool,
 	slog.SetLevel(log_level)
 	if stdSlog == slog { //print to stdout standard, auto disable output if not is terminal
 		if !diableStdout {
-			if outputIsOsFile && gosystem.IsTerminal(slogOutFile.Fd()) {
-				// if gosystem.IsTerminalWriter(stdSlog.Out) {
-				logTextFormatterStd.ForceColors = true
-				slog.SetFormatter(&logRuntimeFormatterStd)
-			} else {
+			// if gosystem.IsTerminalWriter(stdSlog.Out) {
+			logTextFormatterStd.ForceColors = true
+			slog.SetFormatter(&logRuntimeFormatterStd)
+			if !outputIsOsFile || !gosystem.IsTerminal(slogOutFile.Fd()) {
 				slog.SetOutput(io.Discard)
 			}
+		} else {
+			slog.SetOutput(io.Discard)
 		}
 	} else {
 		slog.SetFormatter(&logRuntimeFormatterStd)
@@ -371,39 +376,35 @@ func RotateSetHookCompress(h func(zipPath string) error) {
 }
 
 func WithFields(fields map[string]any) *Entry {
+	smerge.MergeWithOverwrite(&fields, stdSlog.globalFields)
 	return &Entry{
 		stdSlog.Logger.WithFields(logrus.Fields(fields)),
 	}
 }
 
 func (slog *Slog) RemoveFields(fields ...string) {
-	// if !slog.initted || slog.rh == nil {
 	if !slog.initted {
 		return
 	}
 	if slog.Formatter != nil {
-		if frt, ok := slog.Formatter.(*FormatterRuntime); ok {
-			for _, k := range fields {
-				if k == FieldKeyFunc || k == FieldKeyPakage || k == FieldKeyLine || k == FieldKeyFile {
-					continue
-				}
-				delete(frt.globalFields, k)
-			}
+		for _, k := range fields {
+			// if k == FieldKeyFunc || k == FieldKeyPakage || k == FieldKeyLine || k == FieldKeyFile {
+			// 	continue
+			// }
+			delete(slog.globalFields, k)
 		}
 	}
 }
 
 func (slog *Slog) UpdateFields(fields map[string]any) {
+	if !slog.initted {
+		return
+	}
+	smerge.MergeWithOverwrite(&slog.globalFields, fields)
 	if slog.Formatter != nil {
 		if frt, ok := slog.Formatter.(*FormatterRuntime); ok {
-			for k, v := range fields {
-				if k == FieldKeyFunc || k == FieldKeyPakage || k == FieldKeyLine || k == FieldKeyFile {
-					continue
-				}
-				if frt.globalFields == nil {
-					frt.globalFields = map[string]any{}
-				}
-				frt.globalFields[k] = v
+			if frt.globalFields == nil {
+				frt.globalFields = slog.globalFields
 			}
 		}
 	}
@@ -418,11 +419,7 @@ func RemoveFields(fields ...string) {
 }
 
 func (slog *Slog) ResetFields() {
-	if slog.Formatter != nil {
-		if frt, ok := slog.Formatter.(*FormatterRuntime); ok {
-			frt.globalFields = map[string]any{}
-		}
-	}
+	slog.globalFields = make(map[string]any)
 }
 
 func ResetFields() {
