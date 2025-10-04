@@ -170,30 +170,17 @@ func (f *JSONFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	} else {
 		b = &bytes.Buffer{}
 	}
-
-	canConvertMsgToJson := true
+	data[f.FieldMap.resolve(FieldKeyMsg)] = entry.Message
 	if !f.DisableMsgJsonOpject {
-		if canConvertMsgToJson = json.Valid([]byte(entry.Message)); !canConvertMsgToJson {
-			testMsg := "{" + entry.Message + "}"
-			if canConvertMsgToJson = json.Valid([]byte(testMsg)); !canConvertMsgToJson {
-				testMsg = "[" + entry.Message + "]"
-				if canConvertMsgToJson = json.Valid([]byte(testMsg)); canConvertMsgToJson {
-					entry.Message = testMsg
-				}
+		var msgObj any
+		for _, msg := range []string{entry.Message, "{" + entry.Message + "}", "[" + entry.Message + "]"} {
+			if err := json.Unmarshal([]byte(msg), &msgObj); err == nil {
+				data[f.FieldMap.resolve(FieldKeyMsg)] = msgObj
+				break
 			}
 		}
 	}
 
-	if !f.DisableMsgJsonOpject && canConvertMsgToJson {
-		var msgObj any
-		if err := json.Unmarshal([]byte(entry.Message), &msgObj); err == nil {
-			data[FieldKeyMsg] = msgObj
-		} else {
-			data[FieldKeyMsg] = entry.Message
-		}
-	} else {
-		data[f.FieldMap.resolve(FieldKeyMsg)] = entry.Message
-	}
 	err := ReorderJSONKeys(data, b, f.ReorderArrayKeys, f.DisableHTMLEscape)
 	if err != nil {
 		return []byte{}, err
@@ -224,6 +211,7 @@ func ReorderJSONKeys(data map[string]any, buf io.Writer, keyOrder []string, disa
 	first := true
 	processedKeys := make(map[string]bool)
 
+	// Write the keys in the specified order first
 	for _, key := range keyOrder {
 		if value, exists := data[key]; exists {
 			processedKeys[key] = true
