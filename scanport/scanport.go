@@ -3,6 +3,7 @@ package scanport
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"os/exec"
 	"strconv"

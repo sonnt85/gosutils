@@ -1310,21 +1310,17 @@ func XmlStringFindElementsSlide(strxml *string, pathSearch string) ([]string, er
 	//	numnodes := len(nodes)
 	for k := 0; k < len(nodes); k++ {
 		v := nodes[k]
-		//		fmt.Println("xmlStringFindElement:", v.NamespaceURI, v.InnerText())
-		//|| v.Type == xmlquery.AttributeNode
 		if v.FirstChild == nil || v.FirstChild.FirstChild == nil {
-			retslide[k] = v.InnerText()
+			retslide = append(retslide, v.InnerText())
 		} else {
 			xml := strings.NewReader(v.OutputXML(true))
 			json, err := xj.Convert(xml)
 			if err != nil {
-				retslide[k] = v.OutputXML(true)
+				retslide = append(retslide, v.OutputXML(true))
 			} else {
-				retslide[k] = json.String()
+				retslide = append(retslide, json.String())
 			}
-			//			retmap[key] = v.OutputXML(true)
 		}
-		//		retmap[strconv.Itoa(id)] = v.InnerText()
 	}
 
 	if len(retslide) != 0 {
@@ -1486,9 +1482,8 @@ func GmailSend(usermail, password, from, subject string, to []string, msg []byte
 }
 
 func EmailSend(smtphost, usermail, password, from, subject string, to []string, msg []byte, attach interface{}, filename string) (err error) {
-	if len(usermail) == 0 && len(password) == 0 {
-		usermail = "cloudiotecloud@gmail.com"
-		password = "cloudiot123cloud"
+	if len(usermail) == 0 || len(password) == 0 {
+		return fmt.Errorf("email credentials (usermail, password) must be provided")
 	}
 	if len(smtphost) == 0 {
 		smtphost = "smtp.gmail.com:587"
