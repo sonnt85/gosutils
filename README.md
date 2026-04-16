@@ -108,6 +108,10 @@ sutils.JsonSet(jsonStr, "user.age", 30)
 - `New(pattern) *Regexp` — cached regexp compilation
 - Methods: `FindString`, `FindAllString`, `MatchString`, `ReplaceAllString`, etc.
 
+## Author
+
+**sonnt85** — [thanhson.rf@gmail.com](mailto:thanhson.rf@gmail.com)
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
