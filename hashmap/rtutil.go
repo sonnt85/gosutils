@@ -29,10 +29,12 @@ import (
 )
 
 // NanoTime returns the current time in nanoseconds from a monotonic clock.
+//
 //go:linkname NanoTime runtime.nanotime
 func NanoTime() int64
 
 // CPUTicks is a faster alternative to NanoTime to measure time duration.
+//
 //go:linkname CPUTicks runtime.cputicks
 func CPUTicks() int64
 
@@ -62,6 +64,7 @@ func MemHashString(str string) uint64 {
 }
 
 // FastRand is a fast thread local random function.
+//
 //go:linkname FastRand runtime.fastrand
 func FastRand() uint32
 
@@ -77,13 +80,14 @@ func Memclr(b []byte) {
 }
 
 // TODO: Figure out a way to re-use memhash for the second uint64 hash, we
-//       already know that appending bytes isn't reliable for generating a
-//       second hash (see Ristretto PR #88).
 //
-//       We also know that while the Go runtime has a runtime memhash128
-//       function, it's not possible to use it to generate [2]uint64 or
-//       anything resembling a 128bit hash, even though that's exactly what
-//       we need in this situation.
+//	already know that appending bytes isn't reliable for generating a
+//	second hash (see Ristretto PR #88).
+//
+//	We also know that while the Go runtime has a runtime memhash128
+//	function, it's not possible to use it to generate [2]uint64 or
+//	anything resembling a 128bit hash, even though that's exactly what
+//	we need in this situation.
 func KeyToHash(key interface{}) (uint64, uint64) {
 	if key == nil {
 		return 0, 0

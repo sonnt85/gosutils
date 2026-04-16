@@ -1,3 +1,4 @@
+//go:build darwin || linux || freebsd || netbsd || windows || openbsd
 // +build darwin linux freebsd netbsd windows openbsd
 
 package osext

@@ -1,3 +1,4 @@
+//go:build (!go1.8 && darwin) || (!go1.8 && freebsd) || openbsd
 // +build !go1.8,darwin !go1.8,freebsd openbsd
 
 package osext

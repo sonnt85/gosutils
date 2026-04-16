@@ -49,7 +49,9 @@ type token struct {
 }
 
 // ----------------------------------------------------------
-//  Location-tracking reader
+//
+//	Location-tracking reader
+//
 // ----------------------------------------------------------
 type locReader struct {
 	location

@@ -1,7 +1,8 @@
 // Package vnc implements a VNC client.
 //
 // References:
-//   [PROTOCOL]: http://tools.ietf.org/html/rfc6143
+//
+//	[PROTOCOL]: http://tools.ietf.org/html/rfc6143
 package vncclient
 
 import (

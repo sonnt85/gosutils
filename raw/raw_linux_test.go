@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package raw
@@ -420,13 +421,15 @@ func Test_packetConn_handleStats(t *testing.T) {
 // the basis for more specific socket implementations.
 type noopSocket struct{}
 
-func (noopSocket) Bind(sa unix.Sockaddr) error                                        { return nil }
-func (noopSocket) Close() error                                                       { return nil }
-func (noopSocket) GetSockoptTpacketStats(level, name int) (*unix.TpacketStats, error) { return nil, nil }
-func (noopSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error)           { return 0, nil, nil }
-func (noopSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error                 { return nil }
-func (noopSocket) SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq) error  { return nil }
-func (noopSocket) SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error   { return nil }
-func (noopSocket) SetDeadline(timeout time.Time) error                                { return nil }
-func (noopSocket) SetReadDeadline(timeout time.Time) error                            { return nil }
-func (noopSocket) SetWriteDeadline(timeout time.Time) error                           { return nil }
+func (noopSocket) Bind(sa unix.Sockaddr) error { return nil }
+func (noopSocket) Close() error                { return nil }
+func (noopSocket) GetSockoptTpacketStats(level, name int) (*unix.TpacketStats, error) {
+	return nil, nil
+}
+func (noopSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error)          { return 0, nil, nil }
+func (noopSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error                { return nil }
+func (noopSocket) SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq) error { return nil }
+func (noopSocket) SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error  { return nil }
+func (noopSocket) SetDeadline(timeout time.Time) error                               { return nil }
+func (noopSocket) SetReadDeadline(timeout time.Time) error                           { return nil }
+func (noopSocket) SetWriteDeadline(timeout time.Time) error                          { return nil }

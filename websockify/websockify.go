@@ -2,9 +2,9 @@ package websockify
 
 import (
 	"flag"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/websocket"
 	"io"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"net/http"
 	"os"

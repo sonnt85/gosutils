@@ -7,14 +7,14 @@ import (
 	"errors"
 )
 
-//ECB PKCS5Padding
+// ECB PKCS5Padding
 func PKCS5Padding(ciphertext []byte, blockSize int) []byte {
 	padding := blockSize - len(ciphertext)%blockSize
 	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
 	return append(ciphertext, padtext...)
 }
 
-//ECB PKCS5Unpadding
+// ECB PKCS5Unpadding
 func PKCS5Unpadding(origData []byte) []byte {
 	length := len(origData)
 	unpadding := int(origData[length-1])
@@ -44,7 +44,7 @@ func encrypt(origData, key []byte) ([]byte, error) {
 	return out, nil
 }
 
-//Des Decrypt
+// Des Decrypt
 func decrypt(crypted, key []byte) ([]byte, error) {
 	if len(crypted) < 1 || len(key) < 1 {
 		return nil, errors.New("wrong data or key")
@@ -69,7 +69,7 @@ func decrypt(crypted, key []byte) ([]byte, error) {
 	return out, nil
 }
 
-//[golang ECB 3DES Encrypt]
+// [golang ECB 3DES Encrypt]
 func TripleEcbDesEncrypt(origData, key []byte) ([]byte, error) {
 	tkey := make([]byte, 24, 24)
 	copy(tkey, key)
@@ -123,7 +123,7 @@ func TripleDesDecrypt(crypted, key []byte) ([]byte, error) {
 	return nil, nil
 }
 
-//[golang ECB 3DES Decrypt]
+// [golang ECB 3DES Decrypt]
 func TripleEcbDesDecrypt(crypted, key []byte) ([]byte, error) {
 	tkey := make([]byte, 24)
 	copy(tkey, key)

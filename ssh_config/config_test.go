@@ -2,8 +2,8 @@ package ssh_config
 
 import (
 	"bytes"
-	"io/ioutil"
 	log "github.com/sirupsen/logrus"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"

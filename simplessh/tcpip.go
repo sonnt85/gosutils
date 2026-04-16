@@ -134,7 +134,6 @@ func TCPIPForwardRequest(req *ssh.Request, sshConn ssh.Conn) {
 
 }
 
-//
 // TODO: Need to add fix state to handle "cancel-tcpip-forward"
 func TCPIPCancelForwardRequest(req *ssh.Request, sshConn ssh.Conn) {
 	sshConn.Close()

@@ -7,7 +7,7 @@ import (
 	opty "github.com/creack/pty"
 )
 
-//set size terminal file
+// set size terminal file
 func SetWinsizeTerminal(f *os.File, w, h int) error {
 	return setWinsizeTerminal(f, w, h)
 }

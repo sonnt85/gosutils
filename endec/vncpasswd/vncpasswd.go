@@ -298,7 +298,7 @@ func unscrun(outof [2]uint32, into *[]byte) {
 	(*into)[7] = byte(outof[1] & 0xff)
 }
 
-//block is rewrite
+// block is rewrite
 func desfunc(block *[2]uint32, keys [32]uint32) {
 	var fval, work, right, leftt uint32
 	var round int

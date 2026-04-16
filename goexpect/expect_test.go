@@ -888,13 +888,12 @@ func TestSendTimeout(t *testing.T) {
 		t.Fatalf("wIn.Close() failed: %v", err)
 	}
 
-	
 	if err := exp.Send("test" + "\n"); err != nil {
-		t.Fatalf("Send(%q) command failed: %v", "test" + "\n", err)
+		t.Fatalf("Send(%q) command failed: %v", "test"+"\n", err)
 	}
 
 	if err := exp.Send("test" + "\n"); err == nil {
-		t.Errorf("Send(%q) = %t want: %t, err: %v", "test" + "\n", (err != nil), true, err)
+		t.Errorf("Send(%q) = %t want: %t, err: %v", "test"+"\n", (err != nil), true, err)
 	}
 	waitCh <- nil
 	exp.Close()
@@ -902,7 +901,6 @@ func TestSendTimeout(t *testing.T) {
 
 	<-r
 }
-
 
 // TestSpawnSSHPTY tests the SSHPTY spawner.
 func TestSpawnSSHPTY(t *testing.T) {
@@ -1149,11 +1147,11 @@ Router42>`},
 			t.Errorf("%s: Expect(%q,%v) = %t want: %t , err: %v, out: %q", tst.name, tst.re.String(), tst.timeout, got, want, err, out)
 			continue
 		}
-        out, _, err = exp.Expect(tst.re2, tst.timeout)
-        if got, want := err != nil, tst.fail; got != want {
-            t.Errorf("%s: Expect(%q,%v) = %t want: %t , err: %v, out: %q", tst.name, tst.re.String(), tst.timeout, got, want, err, out)
-            continue
-        }
+		out, _, err = exp.Expect(tst.re2, tst.timeout)
+		if got, want := err != nil, tst.fail; got != want {
+			t.Errorf("%s: Expect(%q,%v) = %t want: %t , err: %v, out: %q", tst.name, tst.re.String(), tst.timeout, got, want, err, out)
+			continue
+		}
 	}
 }
 

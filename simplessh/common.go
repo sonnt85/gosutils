@@ -2,9 +2,9 @@ package simplessh
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
-	log "github.com/sirupsen/logrus"
 	"sync"
 
 	"golang.org/x/crypto/ssh"

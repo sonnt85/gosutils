@@ -6,9 +6,9 @@ import (
 
 	"github.com/sonnt85/gosutils/simplessh"
 
+	"filepath"
 	"golang.org/x/crypto/ssh"
 	"os"
-	"filepath"
 )
 
 func ExampleServer_ListenAndServe() {
@@ -80,7 +80,7 @@ func ExampleServer_ListenAndServe() {
 	} else {
 		//pty
 		simplessh.HandleChannel(simplessh.SessionRequest, simplessh.SessionHandler())
-		//ssh -L 
+		//ssh -L
 		simplessh.HandleChannel(simplessh.DirectForwardRequest, simplessh.DirectPortForwardHandler())
 		//ssh -R
 		simplessh.HandleRequestFunc(simplessh.RemoteForwardRequest, simplessh.TCPIPForwardRequest)

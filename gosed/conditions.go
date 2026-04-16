@@ -1,4 +1,4 @@
-package gosed 
+package gosed
 
 import (
 	"fmt"

@@ -103,7 +103,8 @@ func (dr *DigestRequest) getHTTPClient() *http.Client {
 }
 
 // UpdateRequest is called when you want to reuse an existing
-//  DigestRequest connection with new request information
+//
+//	DigestRequest connection with new request information
 func (dr *DigestRequest) UpdateRequest(username, password, method, uri, body string) *DigestRequest {
 	dr.Body = body
 	dr.Method = method

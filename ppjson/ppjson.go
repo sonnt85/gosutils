@@ -268,7 +268,7 @@ func ToBytes(v interface{}, disableClourFlag ...bool) []byte {
 	}
 }
 
-//format json string no colour
+// format json string no colour
 func FormatString(str, indent string) (string, error) {
 	var prettyJSON bytes.Buffer
 	if err := json.Indent(&prettyJSON, []byte(str), "", indent); err != nil {

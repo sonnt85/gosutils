@@ -21,13 +21,13 @@ type Regexp struct {
 	rx      *goregexp.Regexp
 }
 
-//compile pattern only once, can call mutiple times
+// compile pattern only once, can call mutiple times
 func (r *Regexp) Regexp() *goregexp.Regexp {
 	r.once.Do(r.build)
 	return r.rx
 }
 
-//compile pattern
+// compile pattern
 func (r *Regexp) build() {
 	r.rx = goregexp.MustCompile(r.pattern)
 	r.pattern = ""
@@ -129,13 +129,15 @@ func (r *Regexp) FindAllStringSubmatch(s string, n int) [][]string {
 // that contains no metacharacters, it is equivalent to strings.SplitN.
 //
 // Example:
-//   s := regexp.MustCompile("a*").Split("abaabaccadaaae", 5)
-//   // s: ["", "b", "b", "c", "cadaaae"]
+//
+//	s := regexp.MustCompile("a*").Split("abaabaccadaaae", 5)
+//	// s: ["", "b", "b", "c", "cadaaae"]
 //
 // The count determines the number of substrings to return:
-//   n > 0: at most n substrings; the last substring will be the unsplit remainder.
-//   n == 0: the result is nil (zero substrings)
-//   n < 0: all substrings
+//
+//	n > 0: at most n substrings; the last substring will be the unsplit remainder.
+//	n == 0: the result is nil (zero substrings)
+//	n < 0: all substrings
 func (r *Regexp) Split(s string, n int) []string {
 	return r.Regexp().Split(s, n)
 }

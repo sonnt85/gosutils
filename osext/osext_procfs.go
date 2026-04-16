@@ -1,3 +1,4 @@
+//go:build (!go1.8 && android) || (!go1.8 && linux) || (!go1.8 && netbsd) || (!go1.8 && solaris) || (!go1.8 && dragonfly)
 // +build !go1.8,android !go1.8,linux !go1.8,netbsd !go1.8,solaris !go1.8,dragonfly
 
 package osext
