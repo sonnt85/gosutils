@@ -1,7 +1,6 @@
 package gcauto
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,10 +16,10 @@ func TestNonZero(t *testing.T) {
 }
 
 func TestTotalMemory(t *testing.T) {
-	fmt.Printf("Total system memory: %d\n", TotalMemory())
+	t.Logf("Total system memory: %d", TotalMemory())
 }
 func TestFreeMemory(t *testing.T) {
-	fmt.Printf("Free system memory: %d\n", FreeMemory())
+	t.Logf("Free system memory: %d", FreeMemory())
 }
 
 func TestMem(t *testing.T) {

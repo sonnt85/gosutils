@@ -1,7 +1,6 @@
 package sexec
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -25,8 +24,7 @@ func TestExecBytes(t *testing.T) {
 	var out []byte
 	out, _, err = ExecBytesEnvTimeout(b, "name", map[string]string{"TESTENV": "testenv"}, time.Second)
 	require.Nil(t, err)
-	fmt.Println(string(out))
-
+	t.Logf("output: %s", out)
 }
 
 func TestExecAsScript(t *testing.T) {

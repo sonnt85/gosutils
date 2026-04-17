@@ -200,7 +200,6 @@ func BenchmarkIntIntMapGet10PercentHitRate(b *testing.B) {
 				}
 			}
 		}
-		//log.Println("int int sum:", sum)
 	}
 }
 
@@ -218,7 +217,6 @@ func BenchmarkStdMapGet10PercentHitRate(b *testing.B) {
 				}
 			}
 		}
-		//log.Println("map sum:", sum)
 	}
 }
 
@@ -234,7 +232,6 @@ func BenchmarkIntIntMapGet100PercentHitRate(b *testing.B) {
 				sum += v
 			}
 		}
-		//log.Println("int int sum:", sum)
 	}
 }
 
@@ -250,6 +247,5 @@ func BenchmarkStdMapGet100PercentHitRate(b *testing.B) {
 				sum += v
 			}
 		}
-		//log.Println("map sum:", sum)
 	}
 }

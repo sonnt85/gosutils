@@ -1,7 +1,6 @@
 package funcmap
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,27 +16,23 @@ var (
 )
 
 func ftest(str1, str2 string) (int, string) {
-	str12 := str1 + str2
-	fmt.Println(str12)
-	return 9, str12
+	return 9, str1 + str2
 }
+
 func TestTask(t *testing.T) {
 	task, err := NewTask[uint32]("concatstring", nil, ftest, "xinchao ", "cac ban")
 	require.Nil(t, err)
-	retval, err := task.Call()
-	var str string
-	var ok bool
-	// value := reflect.New(v.(reflect.Type)).Elem().Interface()
-	if retval != nil {
-		fmt.Println(retval)
-	}
-	// return
-	fmt.Println("task id: ", task.Id)
-	if str, ok = retval[0].(string); ok {
-		fmt.Println(str)
-		for k, v := range retval {
-			fmt.Printf("[%d] %#v\n", k, v)
-		}
-	}
 
+	retval, err := task.Call()
+	require.Nil(t, err)
+	require.NotNil(t, retval)
+	t.Logf("task id: %d, retval: %v", task.Id, retval)
+
+	num, ok := retval[0].(int)
+	require.True(t, ok, "retval[0] is not an int")
+	require.Equal(t, 9, num)
+
+	str, ok := retval[1].(string)
+	require.True(t, ok, "retval[1] is not a string")
+	require.Equal(t, "xinchao cac ban", str)
 }

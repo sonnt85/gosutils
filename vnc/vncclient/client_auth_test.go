@@ -89,11 +89,6 @@ func TestClientAuthPasswordSuccess_Impl(t *testing.T) {
 
 	raw := PasswordAuth{Password: "Ch_#!T@8"}
 
-	// Only about 12 hours into Go at the moment...
-	// if _, ok := raw.(ClientAuth); !ok {
-	// 	t.Fatal("PasswordAuth doesn't implement ClientAuth")
-	// }
-
 	conn := &fakeNetConnection{DataToSend: randomValue, ExpectData: expectedResponse, Test: t}
 	err := raw.Handshake(conn)
 

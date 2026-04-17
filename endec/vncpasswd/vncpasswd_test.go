@@ -3,26 +3,30 @@ package vncpasswd
 import (
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func dumpByteSlice(b []byte) {
-	// os.Stdout
+// dumpByteSlice returns a hex+ASCII dump of b, laid out like `hexdump -C`.
+// Returned as a string so callers can route it through t.Log instead of
+// writing to stdout from inside a test.
+func dumpByteSlice(b []byte) string {
+	var sb strings.Builder
 	var a [16]byte
 	n := (len(b) + 15) &^ 15
 	for i := 0; i < n; i++ {
 		if i%16 == 0 {
-			fmt.Printf("%4d", i)
+			fmt.Fprintf(&sb, "%4d", i)
 		}
 		if i%8 == 0 {
-			fmt.Print(" ")
+			sb.WriteByte(' ')
 		}
 		if i < len(b) {
-			fmt.Printf(" %02X", b[i])
+			fmt.Fprintf(&sb, " %02X", b[i])
 		} else {
-			fmt.Print("   ")
+			sb.WriteString("   ")
 		}
 		if i >= len(b) {
 			a[i%16] = ' '
@@ -32,20 +36,23 @@ func dumpByteSlice(b []byte) {
 			a[i%16] = b[i]
 		}
 		if i%16 == 15 {
-			fmt.Printf("  %s\n", string(a[:]))
+			fmt.Fprintf(&sb, "  %s\n", string(a[:]))
 		}
 	}
+	return sb.String()
 }
+
 func TestVncpasswd(t *testing.T) {
 	b := VncEncryptPasswd("hatuanson")
 	s := VncEncryptPasswdToHexString("nongthon")
-	fmt.Println(s)
-	dumpByteSlice(b)
+	t.Logf("hex: %s", s)
+	t.Logf("dump:\n%s", dumpByteSlice(b))
+
 	b, err := hex.DecodeString("F61E24D88C63963D")
 	require.Nil(t, err)
-	// dumpByteSlice(b)
-	s, ok := VncDecryptPasswd(b)
-	if ok {
-		fmt.Println("decode:", s)
+	if s, ok := VncDecryptPasswd(b); ok {
+		t.Logf("decode: %s", s)
+	} else {
+		t.Error("VncDecryptPasswd failed to decode known-good input")
 	}
 }

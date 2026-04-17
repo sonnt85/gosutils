@@ -30,7 +30,7 @@ func TestStructIndexes(t *testing.T) {
 	defer func() {
 		err := recover()
 		if err != nil {
-			fmt.Printf("err %+v\n", err)
+			t.Errorf("unexpected panic: %+v", err)
 			t.Error("Using mixed indexes should not panic")
 		}
 	}()
@@ -1274,7 +1274,7 @@ func TestNestedNilPointer(t *testing.T) {
 	defer func() {
 		err := recover()
 		if err != nil {
-			fmt.Printf("err %+v\n", err)
+			t.Errorf("unexpected panic: %+v", err)
 			t.Error("Internal nil pointer should not panic")
 		}
 	}()
@@ -1335,7 +1335,7 @@ func TestTagWithStringOption(t *testing.T) {
 	defer func() {
 		err := recover()
 		if err != nil {
-			fmt.Printf("err %+v\n", err)
+			t.Errorf("unexpected panic: %+v", err)
 			t.Error("Internal nil pointer should not panic")
 		}
 	}()
@@ -1377,7 +1377,7 @@ func TestNonStringerTagWithStringOption(t *testing.T) {
 	defer func() {
 		err := recover()
 		if err != nil {
-			fmt.Printf("err %+v\n", err)
+			t.Errorf("unexpected panic: %+v", err)
 			t.Error("Internal nil pointer should not panic")
 		}
 	}()
@@ -1410,7 +1410,7 @@ func TestPointer2Pointer(t *testing.T) {
 	defer func() {
 		err := recover()
 		if err != nil {
-			fmt.Printf("err %+v\n", err)
+			t.Errorf("unexpected panic: %+v", err)
 			t.Error("Internal nil pointer should not panic")
 		}
 	}()
