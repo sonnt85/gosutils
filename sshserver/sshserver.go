@@ -894,15 +894,15 @@ func NewServer(User, addr, keypass, Pubkeys string, opts ...any) *Server {
 	server.ChannelHandlers = map[string]gossh.ChannelHandler{
 		"default":                  DefaultChannelHandlers,
 		"session":                  gossh.DefaultSessionHandler,
-		gossh.DirectForwardRequest: gossh.DirectTCPIPHandler, //-L
+		"direct-tcpip":           gossh.DirectTCPIPHandler, //-L
 		//		"subsystem":    gossh.SftpHandler,
 	}
 
 	forwardHandler := &gossh.ForwardedTCPHandler{}
 	server.RequestHandlers = map[string]gossh.RequestHandler{
-		"default":                        DefaultRequestHandlers,
-		gossh.RemoteForwardRequest:       forwardHandler.HandleSSHRequest, //-R
-		gossh.CancelRemoteForwardRequest: forwardHandler.HandleSSHRequest,
+		"default":              DefaultRequestHandlers,
+		"tcpip-forward":        forwardHandler.HandleSSHRequest, //-R
+		"cancel-tcpip-forward": forwardHandler.HandleSSHRequest,
 	}
 	SSHServer = server
 	return SSHServer

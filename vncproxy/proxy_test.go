@@ -2,6 +2,7 @@ package vncproxy
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -19,9 +20,14 @@ func TestProxy(t *testing.T) {
 		h.ServeHTTP(ctx.Writer, ctx.Request)
 	})
 
-	if err := r.Run(); err != nil {
-		panic(err)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/websockify")
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer resp.Body.Close()
 }
 
 func NewVNCProxy() *Proxy {

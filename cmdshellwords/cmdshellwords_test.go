@@ -4,7 +4,6 @@ import (
 	"go/build"
 	"os"
 	"os/exec"
-	"path"
 	"reflect"
 	"testing"
 
@@ -138,17 +137,13 @@ func TestError(t *testing.T) {
 }
 
 func TestShellRun(t *testing.T) {
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	pwd, err := shellRun("pwd", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	pwd2, err := shellRun("pwd", path.Join(dir, "/_example"))
+	tmpDir := t.TempDir()
+	pwd2, err := shellRun("pwd", tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,17 +158,13 @@ func TestShellRunNoEnv(t *testing.T) {
 	defer os.Setenv("SHELL", old)
 	os.Unsetenv("SHELL")
 
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	pwd, err := shellRun("pwd", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	pwd2, err := shellRun("pwd", path.Join(dir, "/_example"))
+	tmpDir := t.TempDir()
+	pwd2, err := shellRun("pwd", tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +388,7 @@ func TestHaveMore(t *testing.T) {
 	line := "echo foo; seq 1 10"
 	args, err := parser.Parse(line)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 	expected := []string{"echo", "foo"}
 	if !reflect.DeepEqual(args, expected) {
@@ -411,7 +402,7 @@ func TestHaveMore(t *testing.T) {
 	line = string([]rune(line)[parser.Position+1:])
 	args, err = parser.Parse(line)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 	expected = []string{"seq", "1", "10"}
 	if !reflect.DeepEqual(args, expected) {
@@ -430,7 +421,7 @@ func TestHaveRedirect(t *testing.T) {
 	line := "ls -la 2>foo"
 	args, err := parser.Parse(line)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 	expected := []string{"ls", "-la"}
 	if !reflect.DeepEqual(args, expected) {

@@ -48,7 +48,6 @@ func TestAESCBC(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log(encrypted)
-	encrypted = "r9rGovsiMIUxO3BEVLlu1Q=="
 	decrypted, err := AESCBCDecryptFromBase64(key, encrypted, iv)
 	if err != nil {
 		t.Fatal(err)

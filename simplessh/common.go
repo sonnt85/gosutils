@@ -2,10 +2,11 @@ package simplessh
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -18,7 +19,8 @@ var fwdList = &forwardList{
 }
 
 func init() {
-	logger = log.New(ioutil.Discard, "simplessh", 0)
+	logger = log.New()
+	logger.SetOutput(ioutil.Discard)
 }
 
 // EnableLogging enables logging for the simplessh library

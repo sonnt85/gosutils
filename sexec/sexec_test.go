@@ -28,8 +28,8 @@ func TestExecBytes(t *testing.T) {
 }
 
 func TestExecAsScript(t *testing.T) {
-	if o, _, err := ExecCommandShell(`#/bin/bash;
-	 ls -lhas /root`, 0); err == nil {
+	if o, _, err := ExecCommandShell(`#!/bin/bash
+	pwd`, 0); err == nil {
 		t.Logf("%s", string(o))
 	} else {
 		t.Error(err)

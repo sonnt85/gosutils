@@ -3,12 +3,13 @@ package simplessh_test
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/sonnt85/gosutils/simplessh"
 
-	"filepath"
 	"golang.org/x/crypto/ssh"
-	"os"
 )
 
 func ExampleServer_ListenAndServe() {
@@ -69,7 +70,7 @@ func ExampleServer_ListenAndServe() {
 
 	s.Config = config
 
-	if 1 {
+	if true {
 		handler := simplessh.NewStandardSSHServerHandler()
 		channelHandler := simplessh.NewChannelsMux()
 

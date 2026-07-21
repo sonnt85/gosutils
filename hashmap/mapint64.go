@@ -125,6 +125,10 @@ func (m *MapInt64) get(key int64) (int64, bool) {
 func (m *MapInt64) Put(key int64, val int64) {
 	m.Lock()
 	defer m.Unlock()
+	m.putNoLock(key, val)
+}
+
+func (m *MapInt64) putNoLock(key int64, val int64) {
 	if key == FREE_KEY {
 		if !m.hasFreeKey {
 			m.size++
@@ -260,7 +264,7 @@ func (m *MapInt64) rehash() {
 	for i := 0; i < len(data); i += 2 {
 		o = data[i]
 		if o != FREE_KEY {
-			m.Put(o, data[i+1])
+			m.putNoLock(o, data[i+1])
 		}
 	}
 }

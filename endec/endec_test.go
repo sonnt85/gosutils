@@ -47,13 +47,20 @@ func TestStringEndec(t *testing.T) {
 }
 
 func TestGzip(t *testing.T) {
-	os.Remove("datatest/d2/f2.txt.zip")
-	err := GzipFile("datatest/d2/f2.txt.zip", "datatest/d1/f2.txt", false, -1)
+	tmpDir := t.TempDir()
+	srcFile := filepath.Join(tmpDir, "f2.txt")
+	gzipFile := filepath.Join(tmpDir, "f2.txt.zip")
+	gunzipFile := filepath.Join(tmpDir, "f2.out.txt")
+
+	err := os.WriteFile(srcFile, []byte("gzip test data"), 0600)
 	require.Nil(t, err)
-	err = GunzipFile("datatest/d2/f2.txt", "datatest/d2/f2.txt.zip", false)
+
+	err = GzipFile(gzipFile, srcFile, false, -1)
+	require.Nil(t, err)
+	err = GunzipFile(gunzipFile, gzipFile, false)
 	require.Nil(t, err)
 	buf := bytes.NewBuffer([]byte{})
-	err = GzipFile(buf, "datatest/d1/f2.txt", false, -1)
+	err = GzipFile(buf, srcFile, false, -1)
 	require.Nil(t, err)
 	if buf.Len() == 0 {
 		t.Error("GzipFile into buffer produced zero bytes")
