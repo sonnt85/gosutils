@@ -1,76 +1,101 @@
-# logruntime
+# slogrus
 
-[![CircleCI](https://circleci.com/gh/banzaicloud/logrus-runtime-formatter.svg?style=svg)](https://circleci.com/gh/banzaicloud/logrus-runtime-formatter)
+[![Go Reference](https://pkg.go.dev/badge/github.com/sonnt85/gosutils/slogrus.svg)](https://pkg.go.dev/github.com/sonnt85/gosutils/slogrus)
 
-Golang `runtime` package based automatic function, line and package fields for logrus. For further information and motivation behind the project please read this [post](https://banzaicloud.com/blog/runtime-logging/).
+`slogrus` is an enhanced Logrus wrapper for Go that provides automatic runtime stack decoration (caller function, line number, file, and package tags), log file rotation, custom formatting, and global logger management.
 
-### tl;dr:
+## Features
 
-While we have been working on [Pipeline](https://github.com/banzaicloud/pipeline) we needed **function, package and line number information** to our log messages. We use Logrus and we could not find any similar extension so we have open sourced a Logrus runtime Formatter which **automatically tags log messages with runtime/stack information** without code modification.
+- **Runtime Stack Decoration**: Automatically tag log messages with `func`, `file`, `line`, and `package` caller information without modifying application code.
+- **Log File Rotation**: Built-in support for log rotation with file size limits, max age, max backup counts, and compression.
+- **Structured JSON & Text Formatting**: Customizable JSON and Text formatters supporting custom timestamp formats, field ordering, and colored console output.
+- **Global & Instance Logger**: Simple package-level functions (`slogrus.Info`, `slogrus.Errorf`, etc.) and configurable `Slog` instances.
 
-## Usage
+## Installation
 
-You have to wrap your desired Formatter with the runtime.Formatter and it will do the job:
+```bash
+go get github.com/sonnt85/gosutils/slogrus
+```
+
+## Quick Start
+
+### Basic Global Logging
+
+```go
+package main
+
+import (
+	"github.com/sonnt85/gosutils/slogrus"
+)
+
+func main() {
+	slogrus.SetLevel(slogrus.LevelDebug)
+
+	slogrus.Info("Application started")
+	slogrus.Infof("Listening on port %d", 8080)
+	slogrus.Debug("Debug info message")
+}
+```
+
+### Log File Creation with Rotation
 
 ```go
 package main
 
 import (
 	"github.com/sirupsen/logrus"
-	runtime "github.com/banzaicloud/logrus-runtime-formatter"
+	"github.com/sonnt85/gosutils/slogrus"
 )
 
-var log = logrus.New()
+func main() {
+	// Create a logger that writes to a file with rotation
+	log := slogrus.NewLogFile("logs/app.log", logrus.InfoLevel, true, false)
 
-func init() {
-	childFormatter := logrus.JSONFormatter{}
-	runtimeFormatter := &runtime.Formatter{ChildFormatter: &childFormatter}
-	log.Formatter = runtimeFormatter
-	log.Level = logrus.DebugLevel
+	log.Info("Log message written to file and stderr")
 }
+```
+
+### Runtime Formatter Usage
+
+Wrap any Logrus formatter with `FormatterRuntime` to automatically inject caller details:
+
+```go
+package main
+
+import (
+	"os"
+
+	"github.com/sirupsen/logrus"
+	"github.com/sonnt85/gosutils/slogrus"
+)
 
 func main() {
-	log.WithFields(logrus.Fields{
-		"prefix": "main",
-		"animal": "walrus",
-		"number": 8,
-	}).Debug("Started observing beach")
+	logger := slogrus.New(os.Stdout)
 
-	log.WithFields(logrus.Fields{
-		"prefix":      "sensor",
-		"temperature": -4,
-	}).Info("Temperature changes")
+	runtimeFormatter := &slogrus.FormatterRuntime{
+		ChildFormatter: &logrus.TextFormatter{
+			FullTimestamp: true,
+		},
+		Line:         true,
+		Package:      true,
+		File:         true,
+		BaseNameOnly: true,
+	}
+
+	logger.Formatter = runtimeFormatter
+	logger.Info("Message with caller info tagged")
 }
 ```
 
-## Test
-`make test`
+## API Summary
 
-```
-go test
-PASS
-ok  	github.com/banzaicloud/logrus-runtime-formatter	0.005s
-```
+- `New(writer io.Writer) *Slog` — Create a new logger writing to specified output.
+- `NewLogFile(path, level, pretty, disableStdout)` — Create a rotating file logger.
+- `SetDefaultLogger(logger)` / `GetDefaultLogger()` — Manage the global default logger instance.
+- `SetLevel(level)` / `ParseLevel(str)` — Configure log verbosity level.
+- `FormatterRuntime` — Decorate log entries with `func`, `file`, `line`, and `package`.
+- Package-level logging methods: `Trace`, `Debug`, `Info`, `Warn`, `Error`, `Fatal`, `Printf` and their formatted variants (`Tracef`, `Debugf`, `Infof`, `Warnf`, `Errorf`, `Fatalf`).
 
-## Benchmark
-`make bench`
+## License
 
-```
-go test -bench=. -benchmem
-goos: darwin
-goarch: amd64
-pkg: github.com/banzaicloud/logrus-runtime-formatter
-BenchmarkErrorRuntimeAndTextFormatter-4   	  500000	      3191 ns/op	  26.00 MB/s	     822 B/op	      15 allocs/op
-BenchmarkErrorTextFormatter-4             	 1000000	      1556 ns/op	  43.06 MB/s	     454 B/op	      12 allocs/op
-BenchmarkSmallRuntimeAndTextFormatter-4   	  500000	      3110 ns/op	  32.79 MB/s	     848 B/op	      13 allocs/op
-BenchmarkSmallTextFormatter-4             	 1000000	      1435 ns/op	  59.90 MB/s	     480 B/op	      10 allocs/op
-BenchmarkLargeRuntimeAndTextFormatter-4   	  100000	     11617 ns/op	  26.00 MB/s	    6445 B/op	      19 allocs/op
-BenchmarkLargeTextFormatter-4             	  300000	      4984 ns/op	  57.38 MB/s	    1728 B/op	      12 allocs/op
-BenchmarkSmallRuntimeAndJSONFormatter-4   	  200000	      5884 ns/op	  22.77 MB/s	    2368 B/op	      34 allocs/op
-BenchmarkSmallJSONFormatter-4             	  500000	      3732 ns/op	  30.54 MB/s	    1648 B/op	      28 allocs/op
-BenchmarkLargeRuntimeAndJSONFormatter-4   	  100000	     22673 ns/op	  18.96 MB/s	   11629 B/op	      87 allocs/op
-BenchmarkLargeJSONFormatter-4             	  100000	     16407 ns/op	  24.99 MB/s	    6906 B/op	      78 allocs/op
-PASS
-ok  	github.com/banzaicloud/logrus-runtime-formatter	17.501s
-------------------------------------------------------------
-```
+Apache License 2.0 / MIT
