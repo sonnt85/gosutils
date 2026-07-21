@@ -892,9 +892,9 @@ func NewServer(User, addr, keypass, Pubkeys string, opts ...any) *Server {
 		return true
 	})
 	server.ChannelHandlers = map[string]gossh.ChannelHandler{
-		"default":                  DefaultChannelHandlers,
-		"session":                  gossh.DefaultSessionHandler,
-		"direct-tcpip":           gossh.DirectTCPIPHandler, //-L
+		"default":      DefaultChannelHandlers,
+		"session":      gossh.DefaultSessionHandler,
+		"direct-tcpip": gossh.DirectTCPIPHandler, //-L
 		//		"subsystem":    gossh.SftpHandler,
 	}
 
