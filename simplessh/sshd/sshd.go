@@ -14,7 +14,7 @@ func main() {
 
 	privateBytes, err := os.ReadFile("id_rsa")
 	if err != nil {
-		logl("Failed to load private key (./id_rsa)")
+		log.Fatal("Failed to load private key (./id_rsa)")
 	}
 
 	private, err := ssh.ParsePrivateKey(privateBytes)

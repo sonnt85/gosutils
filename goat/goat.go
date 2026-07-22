@@ -108,26 +108,6 @@ func MMConfigApn(dev, apn, username, password string) (err error) {
 		}
 	}
 
-	return nil
-
-	time.Sleep(time.Second * 10)
-	if err := gonmmm.NMEnableCon(conName); err == nil {
-		return nil
-	} else {
-		// log.Warn(err.Error())
-		return err
-	}
-
-	time.Sleep(time.Second * 10)
-
-	if !MMPDPIsConfigured(apn) {
-		MMPDPdEL([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
-		if errlist, err := MMSetApn(apn); err != nil {
-			log.Errorf("Can not config apn %s:\n%s\n", apn, errlist)
-			return fmt.Errorf("Can not set apn")
-		}
-	}
-
 	if false {
 		if bindex := MMGetBearer(); len(bindex) != 0 {
 			if err := MMDeleteBearer(bindex); err != nil {
@@ -200,7 +180,6 @@ func SendAtCommand(dev, cmdp string, timeouts ...time.Duration) (retstr string, 
 		fmt.Println("\nSendAtCommand error\n", "__\n", cmdp, "=>", retstr, "\n")
 		return "", errors.New("AT respone error, respone: " + retstr)
 	}
-	return
 }
 
 func PDPdEL(dev string, indexs []int) (errindex []int) {
@@ -290,7 +269,6 @@ func MMPDPIsConfigured(apn string) bool { //auto delete empty apn
 		for _, v := range pdps {
 			if v[1] == apn {
 				cnt++
-				return true
 				if cnt == numconfig {
 					return true
 				}
@@ -568,7 +546,7 @@ PRODUCT="%s"
    vp=$(lsusb | grep -m 1 -ie 'Huawei' -e Modem -e Networkcard | awk '{print $6}')
 }
 [[ $vp ]] && {
-   VENDOR=${vp%:*}
+   VENDOR=${vp%%:*}
    PRODUCT=${vp#*:}
    exit 0
 } || {
@@ -594,7 +572,7 @@ PRODUCT="%s"
    vp=$(lsusb | grep -m 1 -ie 'Huawei' -e 'Modem/Networkcard' | awk '{print $6}')
 }
 [[ $vp ]] && {
-   VENDOR=${vp%:*}
+   VENDOR=${vp%%:*}
    PRODUCT=${vp#*:}
 } || {
    echo "Cannot find USB"
@@ -627,7 +605,7 @@ PRODUCT="%s"
    vp=$(lsusb | grep -m 1 -ie 'Huawei' -e 'Modem/Networkcard' | awk '{print $6}')
 }
 [[ $vp ]] && {
-   VENDOR=${vp%:*}
+   VENDOR=${vp%%:*}
    PRODUCT=${vp#*:}
 } || {
    echo "Cannot find USB"

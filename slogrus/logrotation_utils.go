@@ -51,7 +51,7 @@ func RotateLogsMonitor(ctx context.Context, period time.Duration, maxFileSize, m
 	}
 	ticker := time.NewTicker(period)
 	if ctx == nil {
-		ctx, _ = context.WithCancel(context.Background())
+		ctx = context.Background()
 	}
 	go func() {
 		for {
@@ -349,7 +349,7 @@ func RotateDirsMonitor(ctx context.Context, period time.Duration, maxFileSize, m
 	}
 	ticker := time.NewTicker(period)
 	if ctx == nil {
-		ctx, _ = context.WithCancel(context.Background())
+		ctx = context.Background()
 	}
 	go func() {
 		for {

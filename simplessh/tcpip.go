@@ -161,7 +161,7 @@ func DirectPortForwardChannel(newChannel ssh.NewChannel, channel ssh.Channel, re
 	logger.Println(p)
 
 	go func(ch ssh.Channel, sshConn ssh.Conn) {
-		addr := fmt.Sprintf("%s:%d", p.Host1, p.Port1)
+		addr := net.JoinHostPort(p.Host1, fmt.Sprintf("%d", p.Port1))
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
 			return

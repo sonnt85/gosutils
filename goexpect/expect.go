@@ -46,7 +46,7 @@ func NewStatus(code codes.Code, msg string) *Status {
 
 // NewStatusf returns a Status with the provided code and a formatted message.
 func NewStatusf(code codes.Code, format string, a ...interface{}) *Status {
-	return NewStatus(code, fmt.Sprintf(fmt.Sprintf(format, a...)))
+	return NewStatus(code, fmt.Sprintf(format, a...))
 }
 
 // Err is a helper to handle errors.
