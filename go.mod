@@ -42,12 +42,10 @@ require (
 	github.com/sonnt85/goring v1.0.4
 	github.com/sonnt85/gosystem v1.0.0
 	github.com/sonnt85/gotimeutils v1.0.0
-	github.com/sonnt85/sdaemon v1.0.0
 	github.com/sonnt85/snetutils v1.0.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
-	github.com/takama/daemon v1.0.0
 	github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07
 	github.com/tidwall/gjson v1.18.0
 	github.com/tidwall/sjson v1.2.5
@@ -88,11 +86,9 @@ require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/hashicorp/go-version v1.9.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jezek/xgb v1.1.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
@@ -112,20 +108,14 @@ require (
 	github.com/quic-go/quic-go v0.59.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
-	github.com/sonnt85/goappupdate v1.0.0 // indirect
 	github.com/sonnt85/godotenv v0.0.0-20260416144759-091c793aa292 // indirect
 	github.com/sonnt85/gogmap v0.0.0-20240829035007-c95925f2c46d // indirect
 	github.com/sonnt85/gonetwork v1.0.0 // indirect
 	github.com/sonnt85/gonvif/gosoap v0.0.0-20240314095404-04286f3c94c0 // indirect
 	github.com/sonnt85/gonvif/wsdiscovery v0.0.0-20240314095404-04286f3c94c0 // indirect
-	github.com/sonnt85/gosignals v1.0.0 // indirect
 	github.com/sonnt85/gosyncutils v1.0.0 // indirect
-	github.com/sonnt85/gprivate v1.0.0 // indirect
-	github.com/sonnt85/gsjson v0.0.0-20250303164131-82fa4c8905d6 // indirect
-	github.com/sonnt85/machineid v0.0.0-20210130074921-f9dcb3e96c04 // indirect
 	github.com/sonnt85/mdns v1.0.0 // indirect
 	github.com/sonnt85/strcase v0.0.0-20240314073143-557658cedcaa // indirect
-	github.com/sonnt85/vfs v1.0.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect

@@ -125,6 +125,8 @@ func ExecCommandCtxScriptEnvTimeout(ctxc context.Context, scriptbin string, scri
 	var stdout, stderr io.Writer //
 	var cmdPointer **exec.Cmd
 	var hookEndFunc func(*exec.Cmd)
+	var preStart PreStartHook
+	var started StartedHook
 
 	var cmd *exec.Cmd
 	if ctxc == nil {
@@ -162,6 +164,10 @@ func ExecCommandCtxScriptEnvTimeout(ctxc context.Context, scriptbin string, scri
 			}
 		case **exec.Cmd:
 			cmdPointer = v
+		case PreStartHook:
+			preStart = v
+		case StartedHook:
+			started = v
 		case func(*exec.Cmd):
 			hookEndFunc = v
 		case bool:
@@ -237,12 +243,18 @@ func ExecCommandCtxScriptEnvTimeout(ctxc context.Context, scriptbin string, scri
 	} else {
 		cmd.Env = EnrovimentMergeWithCurrentEnv(moreenvs)
 	}
+	if preStart != nil {
+		preStart(cmd)
+	}
 	err = cmd.Start()
 	if cmdPointer != nil {
 		*cmdPointer = cmd
 	}
 	if err != nil {
 		return
+	}
+	if started != nil {
+		started(cmd)
 	}
 	err = cmd.Wait()
 	// err = cmd.Run()
@@ -268,6 +280,8 @@ func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, moreenvs map[st
 	var cmdPointer **exec.Cmd
 	var cmd *exec.Cmd
 	var hookEndFunc func(*exec.Cmd)
+	var preStart PreStartHook
+	var started StartedHook
 	if ctxc == nil {
 		ctxc = context.Background()
 	}
@@ -308,6 +322,10 @@ func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, moreenvs map[st
 			}
 		case **exec.Cmd:
 			cmdPointer = v
+		case PreStartHook:
+			preStart = v
+		case StartedHook:
+			started = v
 		case func(*exec.Cmd):
 			hookEndFunc = v
 		case bool:
@@ -338,12 +356,18 @@ func ExecCommandCtxEnvTimeout(ctxc context.Context, name string, moreenvs map[st
 	} else {
 		cmd.Env = EnrovimentMergeWithCurrentEnv(moreenvs)
 	}
+	if preStart != nil {
+		preStart(cmd)
+	}
 	err = cmd.Start()
 	if cmdPointer != nil {
 		*cmdPointer = cmd
 	}
 	if err != nil {
 		return
+	}
+	if started != nil {
+		started(cmd)
 	}
 	err = cmd.Wait()
 	// err = cmd.Run()
